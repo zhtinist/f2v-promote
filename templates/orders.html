@@ -1,0 +1,917 @@
+{{template "base" .}} {{define "page_title"}}订单监控{{end}} {{define
+"topbar_actions"}}
+<a href="/campaigns/export" class="btn btn-secondary btn-sm">导出 CSV</a>
+{{end}} {{define "content"}}
+<div x-data="orderMonitor()" x-init="init()">
+  <!-- 筛选栏 -->
+  <div class="filter-bar">
+    <div class="form-group filter-id">
+      <label>订单ID</label>
+      <input type="number" x-model.number="filterID" placeholder="精确搜索" />
+    </div>
+    <div class="form-group">
+      <label>状态</label>
+      <select x-model="filterStatus">
+        <option value="">全部状态</option>
+        <option value="init">初始化</option>
+        <option value="pending">待支付</option>
+        <option value="review">审核中</option>
+        <option value="active">加热中</option>
+        <option value="failed">失败</option>
+        <option value="closed">已关闭</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>开始日期</label>
+      <input type="date" x-model="startDate" />
+    </div>
+    <div class="form-group">
+      <label>结束日期</label>
+      <input type="date" x-model="endDate" />
+    </div>
+    <div class="filter-actions">
+      <button @click="onFilterChange()" class="btn btn-primary btn-sm">
+        筛选
+      </button>
+      <button @click="resetFilter()" class="btn-reset">重置</button>
+    </div>
+  </div>
+  <!-- 订单表格 -->
+  <div class="card">
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th class="col-id">ID</th>
+            <th>活动</th>
+            <th>标签组</th>
+            <th>平台订单号</th>
+            <th>来源</th>
+            <th>状态</th>
+            <th>投放日志</th>
+            <th>消耗</th>
+            <th>关闭原因</th>
+            <th>创建时间</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="order in filteredOrders" :key="order.order_id">
+            <tr>
+              <td class="id-col" x-text="order.order_id"></td>
+              <td
+                class="text-muted text-sm"
+                x-text="order.campaign_id || '-'"
+              ></td>
+              <td x-text="order.tag_name || '-'"></td>
+              <td class="id-col" x-text="order.platform_order_id || '-'"></td>
+              <td>
+                <span
+                  class="badge"
+                  :class="order.source === 'weixin' ? 'badge-info' : 'badge-muted'"
+                  x-text="order.source === 'weixin' ? '微信' : (order.source || '-')"
+                ></span>
+              </td>
+              <td>
+                <span
+                  class="status-badge"
+                  :class="'status-' + order.status"
+                  x-text="statusText(order.status)"
+                ></span>
+              </td>
+              <td
+                class="text-muted text-sm"
+                x-text="order.promote_log_id || '-'"
+              ></td>
+              <td
+                class="text-muted text-sm"
+                x-text="order.tf_money ? '¥' + order.tf_money : '-'"
+              ></td>
+              <td
+                class="text-muted text-sm"
+                style="
+                  max-width: 180px;
+                  overflow: hidden;
+                  text-overflow: ellipsis;
+                  white-space: nowrap;
+                "
+                x-text="order.close_reason || '-'"
+                :title="order.close_reason"
+              ></td>
+              <td class="text-muted text-sm" x-text="order.created_at"></td>
+              <td>
+                <button
+                  @click="openDetail(order)"
+                  class="btn btn-outline btn-xs"
+                >
+                  详情
+                </button>
+                <button
+                  @click="stopOrder(order)"
+                  class="btn btn-outline-danger btn-xs ml-1"
+                >
+                  停止投放
+                </button>
+              </td>
+            </tr>
+          </template>
+          <template x-if="filteredOrders.length === 0">
+            <tr>
+              <td colspan="12" class="empty-row">暂无订单数据</td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 分页器 -->
+    <div class="pagination" x-show="total > 0">
+      <div class="pagination-left">
+        <span x-text="`共 ${total} 条`"></span>
+        <select
+          class="page-size-select"
+          x-model.number="pageSize"
+          @change="page=1; loadOrders()"
+        >
+          <option value="20">20 条/页</option>
+          <option value="50">50 条/页</option>
+          <option value="100">100 条/页</option>
+        </select>
+      </div>
+      <div class="pagination-center">
+        <button class="page-btn" :disabled="page <= 1" @click="goPage(1)">
+          «
+        </button>
+        <button
+          class="page-btn"
+          :disabled="page <= 1"
+          @click="goPage(page - 1)"
+        >
+          ‹
+        </button>
+        <template x-for="p in pagesArray()" :key="p">
+          <button
+            class="page-btn"
+            :class="p === page ? 'page-btn-active' : (p === '...' ? 'page-btn-ellipsis' : '')"
+            :disabled="p === '...'"
+            @click="p !== '...' && goPage(p)"
+            x-text="p"
+          ></button>
+        </template>
+        <button
+          class="page-btn"
+          :disabled="page >= totalPages"
+          @click="goPage(page + 1)"
+        >
+          ›
+        </button>
+        <button
+          class="page-btn"
+          :disabled="page >= totalPages"
+          @click="goPage(totalPages)"
+        >
+          »
+        </button>
+      </div>
+      <div class="pagination-right">
+        <span>跳至</span>
+        <input
+          type="number"
+          class="page-jump-input"
+          min="1"
+          :max="totalPages"
+          @keyup.enter="jumpPage($event)"
+        />
+        <span>页</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 订单详情 Drawer -->
+  <div
+    class="drawer-overlay"
+    x-show="drawerOpen"
+    x-transition.opacity
+    @click="closeDrawer()"
+    x-cloak
+  ></div>
+  <div class="drawer" :class="drawerOpen ? 'drawer-open' : ''" x-cloak>
+    <!-- Header -->
+    <div class="drawer-header">
+      <div>
+        <div
+          class="drawer-title"
+          x-text="'计划名称:' + (d?.plan_name || '-')"
+        ></div>
+        <div
+          class="text-muted text-sm"
+          style="margin-top: 2px"
+          x-text="'ID:' + (d?.id || drawerOrder?.order_id || '')"
+        ></div>
+      </div>
+      <button class="drawer-close" @click="closeDrawer()">&times;</button>
+    </div>
+
+    <!-- Sub Info Bar -->
+    <div class="drawer-sub-info" x-show="d">
+      <span x-text="'投放金额:¥' + (d?.tf_money || '0')"></span>
+      <span x-text="'数据更新时间:' + (d?.sync_time || '-')"></span>
+      <span
+        class="status-badge status-active"
+        x-text="d?.statusLabel || '-'"
+      ></span>
+    </div>
+
+    <!-- Tabs -->
+    <div class="drawer-tabs">
+      <button
+        class="drawer-tab"
+        :class="activeTab === 'detail' ? 'active' : ''"
+        @click="switchTab('detail')"
+      >
+        计划详情
+      </button>
+      <button
+        class="drawer-tab"
+        :class="activeTab === 'info' ? 'active' : ''"
+        @click="switchTab('info')"
+      >
+        计划信息
+      </button>
+      <button
+        class="drawer-tab"
+        :class="activeTab === 'logs' ? 'active' : ''"
+        @click="switchTab('logs')"
+      >
+        计划日志
+      </button>
+      <button
+        class="drawer-tab"
+        :class="activeTab === 'phase' ? 'active' : ''"
+        @click="switchTab('phase')"
+      >
+        阶段数据
+      </button>
+    </div>
+
+    <!-- Body -->
+    <div class="drawer-body">
+      <div x-show="drawerLoading" class="drawer-loading">
+        <span class="spinner"></span> 加载中...
+      </div>
+      <div
+        x-show="!drawerLoading && drawerError"
+        class="drawer-error"
+        x-text="drawerError"
+      ></div>
+
+      <!-- ===== Tab 1: 计划详情 ===== -->
+      <div
+        x-show="!drawerLoading && !drawerError && activeTab === 'detail' && d"
+      >
+        <!-- 视频信息 -->
+        <div class="video-info">
+          <img
+            class="video-cover"
+            :src="d?.cover_url || ''"
+            x-show="d?.cover_url"
+            onerror="this.style.display = 'none'"
+          />
+          <div class="video-meta">
+            <div class="video-desc" x-text="d?.description || '-'"></div>
+            <div class="video-sub">
+              <span x-text="'佣金率: ' + (d?.commissionRate ?? 0) + '%'"></span>
+              <span x-text="d?.author_nickname || ''"></span>
+              <span x-text="d?.v_create_time || ''"></span>
+            </div>
+          </div>
+          <div class="heat-circle">
+            <span
+              class="heat-circle-label"
+              x-text="d?.statusLabel || '加热中'"
+            ></span>
+            <span
+              class="heat-circle-value"
+              x-text="(d?.sync_status || 0) + ' %'"
+            ></span>
+          </div>
+        </div>
+
+        <!-- 加热数据 -->
+        <div class="section-title">加热数据</div>
+        <div class="metric-grid">
+          <div class="metric-card">
+            <div class="metric-label">订单金额</div>
+            <div
+              class="metric-value highlight"
+              x-text="'¥' + (d?.orderMoney || '0')"
+            ></div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">订单数</div>
+            <div class="metric-value" x-text="d?.order_num ?? 0"></div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">消耗金额</div>
+            <div class="metric-value" x-text="'¥' + (d?.cost || '0')"></div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">平均客单价</div>
+            <div
+              class="metric-value"
+              x-text="'¥' + (d?.avgOrderMoney || '0')"
+            ></div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">无消耗时长</div>
+            <div class="metric-value" x-text="d?.noCostDuration || '-'"></div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-label">成交ROI</div>
+            <div class="metric-value highlight" x-text="d?.roi || '0'"></div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">佣金ROI</div>
+            <div class="metric-value" x-text="d?.commissionRoi || '0'"></div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">点击率</div>
+            <div
+              class="metric-value"
+              x-text="(d?.click_rate || '0') + '%'"
+            ></div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">成交率</div>
+            <div
+              class="metric-value"
+              x-text="(d?.closingRatio || d?.order_rate || '0') + '%'"
+            ></div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">空耗值</div>
+            <div
+              class="metric-value"
+              x-text="'¥' + (d?.empty_money ?? 0)"
+            ></div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-label">直播预约人数</div>
+            <div
+              class="metric-value"
+              x-text="d?.feed_reserve_live_uv ?? 0"
+            ></div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">千次展示成本</div>
+            <div
+              class="metric-value highlight"
+              x-text="'¥' + (d?.cost_view || '0')"
+            ></div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">点击成本</div>
+            <div
+              class="metric-value"
+              x-text="'¥' + (d?.cost_click || '0')"
+            ></div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">转化成本</div>
+            <div
+              class="metric-value"
+              x-text="'¥' + (d?.cost_order || '0')"
+            ></div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">利润</div>
+            <div class="metric-value" x-text="'¥' + (d?.profit || '0')"></div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-label">关注成本</div>
+            <div
+              class="metric-value"
+              x-text="'¥' + (d?.costFocus || '0')"
+            ></div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">预约成本</div>
+            <div
+              class="metric-value"
+              x-text="'¥' + (d?.cost_reserve || '0')"
+            ></div>
+          </div>
+        </div>
+
+        <!-- 互动数据 -->
+        <div class="interact-row">
+          <div class="interact-item">
+            <div class="interact-label">点击</div>
+            <div class="interact-value" x-text="d?.click_num ?? 0"></div>
+          </div>
+          <div class="interact-item">
+            <div class="interact-label">浏览</div>
+            <div class="interact-value" x-text="d?.view_num ?? 0"></div>
+          </div>
+          <div class="interact-item">
+            <div class="interact-label">点赞</div>
+            <div class="interact-value" x-text="d?.like_num ?? 0"></div>
+          </div>
+          <div class="interact-item">
+            <div class="interact-label">评论</div>
+            <div class="interact-value" x-text="d?.comment_num ?? 0"></div>
+          </div>
+          <div class="interact-item">
+            <div class="interact-label">转发</div>
+            <div class="interact-value" x-text="d?.share_num ?? 0"></div>
+          </div>
+          <div class="interact-item">
+            <div class="interact-label">关注</div>
+            <div class="interact-value" x-text="d?.focus_num ?? 0"></div>
+          </div>
+        </div>
+
+        <!-- 加热视频 -->
+        <div class="section-title">加热视频</div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>视频描述</th>
+                <th>审核状态</th>
+                <th>消耗微信豆</th>
+                <th>成交金额</th>
+                <th>成交ROI</th>
+                <th>成交订单数</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template
+                x-for="v in (d?.authorVideoList || [])"
+                :key="v.nonce || v.exportId"
+              >
+                <tr>
+                  <td
+                    style="
+                      max-width: 200px;
+                      overflow: hidden;
+                      text-overflow: ellipsis;
+                      white-space: nowrap;
+                    "
+                    x-text="v.description || '-'"
+                  ></td>
+                  <td x-text="v.audit_status_text || '-'"></td>
+                  <td x-text="v.wechat_bean ?? '-'"></td>
+                  <td x-text="v.pay_amount ? ('¥' + v.pay_amount) : '-'"></td>
+                  <td x-text="v.pay_roi ?? '-'"></td>
+                  <td x-text="v.pay_order_count ?? '-'"></td>
+                </tr>
+              </template>
+              <tr
+                x-show="!d?.authorVideoList || d?.authorVideoList?.length === 0"
+              >
+                <td colspan="6" class="empty-row">暂无数据</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ===== Tab 2: 计划信息 (planSuggestVO + planPaymentVO from detail) ===== -->
+      <div x-show="!drawerLoading && activeTab === 'info' && d">
+        <!-- 加热信息 -->
+        <div class="section-title">加热信息</div>
+        <div class="info-grid" style="margin-bottom: 24px">
+          <div class="info-item">
+            <span class="info-label">加热方式:</span>
+            <span
+              class="info-value"
+              x-text="d?.planSuggestVO?.promotion_type_label || '-'"
+            ></span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">性别:</span>
+            <span
+              class="info-value"
+              x-text="fmtArray(d?.planSuggestVO?.gender)"
+            ></span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">优先提升:</span>
+            <span
+              class="info-value"
+              x-text="d?.planSuggestVO?.promotion_target_label || '-'"
+            ></span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">年龄:</span>
+            <span
+              class="info-value"
+              x-text="fmtArray(d?.planSuggestVO?.age_range)"
+            ></span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">成交出价:</span>
+            <span
+              class="info-value"
+              x-text="d?.planSuggestVO?.pricing_type_label || '-'"
+            ></span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">区域:</span>
+            <span
+              class="info-value"
+              x-text="fmtArray(d?.planSuggestVO?.city_ids)"
+            ></span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">加热时长:</span>
+            <span
+              class="info-value"
+              x-text="d?.planSuggestVO?.duration_label || d?.duration_label || '24小时'"
+            ></span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">兴趣:</span>
+            <span
+              class="info-value"
+              x-text="fmtArray(d?.planSuggestVO?.interest_tag)"
+            ></span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">设备:</span>
+            <span
+              class="info-value"
+              x-text="d?.planSuggestVO?.device_type || '不限'"
+            ></span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">作者:</span>
+            <span
+              class="info-value"
+              x-text="fmtArray(d?.planSuggestVO?.similar_acct_list)"
+            ></span>
+          </div>
+        </div>
+
+        <!-- 支付信息 -->
+        <div class="section-title">支付信息</div>
+        <div class="info-grid">
+          <div class="info-item">
+            <span class="info-label">已支付微信豆:</span>
+            <span
+              class="info-value"
+              x-text="d?.planPaymentVO?.paid_wecoin_amount ?? 0"
+            ></span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">使用优惠:</span>
+            <span
+              class="info-value"
+              x-text="d?.planPaymentVO?.paid_voucher_amount_in_cents ? ('¥' + (d.planPaymentVO.paid_voucher_amount_in_cents / 100).toFixed(2)) : '¥-'"
+            ></span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">已返还微信豆:</span>
+            <span
+              class="info-value"
+              x-text="d?.planPaymentVO?.refund_wecoin_amount ?? 0"
+            ></span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">补贴进度:</span>
+            <span
+              class="info-value"
+              x-text="d?.planPaymentVO?.indemnify_content || '-'"
+            ></span>
+          </div>
+          <div class="info-item">
+            <span class="info-label" style="font-weight: 600"
+              >实际使用微信豆:</span
+            >
+            <span
+              class="info-value"
+              style="font-weight: 600"
+              x-text="(d?.planPaymentVO?.paid_wecoin_amount ?? 0) - (d?.planPaymentVO?.refund_wecoin_amount ?? 0)"
+            ></span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">赔付返券金额:</span>
+            <span
+              class="info-value"
+              x-text="'¥' + (d?.planPaymentVO?.indemnify_voucher_amount_in_cents ? (d.planPaymentVO.indemnify_voucher_amount_in_cents / 100).toFixed(2) : '0')"
+            ></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== Tab 3: 计划日志 (from /record API) ===== -->
+      <div x-show="!drawerLoading && activeTab === 'logs'">
+        <div x-show="tabLoading" class="drawer-loading">
+          <span class="spinner"></span> 加载中...
+        </div>
+        <div x-show="!tabLoading" class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>操作时间</th>
+                <th>行为</th>
+                <th>操作人</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="(log, idx) in planLogs" :key="idx">
+                <tr>
+                  <td x-text="log.create_time || '-'"></td>
+                  <td x-text="log.content || '-'"></td>
+                  <td x-text="log.operator_name || '系统'"></td>
+                </tr>
+              </template>
+              <tr x-show="planLogs.length === 0">
+                <td colspan="3" class="empty-row">暂无日志</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ===== Tab 4: 阶段数据 (planPaymentVO as summary for now) ===== -->
+      <div x-show="!drawerLoading && activeTab === 'phase'">
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>时间</th>
+                <th>消耗金额</th>
+                <th>阶段消耗</th>
+                <th>阶段订单</th>
+                <th>阶段GMV</th>
+                <th>阶段点击</th>
+                <th>点击成本</th>
+                <th>成交ROI</th>
+                <th>佣金ROI</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="(p, idx) in phaseData" :key="idx">
+                <tr>
+                  <td
+                    class="text-sm"
+                    x-text="p.time || p.date || p.create_time || '-'"
+                  ></td>
+                  <td x-text="p.cost != null ? ('¥' + p.cost) : '-'"></td>
+                  <td
+                    x-text="p.phase_cost != null ? ('¥' + p.phase_cost) : '-'"
+                  ></td>
+                  <td x-text="p.phase_order ?? p.order_num ?? '-'"></td>
+                  <td
+                    x-text="p.phase_gmv != null ? ('¥' + p.phase_gmv) : '-'"
+                  ></td>
+                  <td x-text="p.phase_click ?? p.click_num ?? '-'"></td>
+                  <td
+                    x-text="p.click_cost != null ? ('¥' + p.click_cost) : (p.cost_click ? ('¥' + p.cost_click) : '-')"
+                  ></td>
+                  <td x-text="p.pay_roi ?? p.roi ?? '-'"></td>
+                  <td x-text="p.commission_roi ?? p.commissionRoi ?? '-'"></td>
+                </tr>
+              </template>
+              <tr x-show="phaseData.length === 0">
+                <td colspan="9" class="empty-row">暂无数据</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{{end}} {{define "scripts"}}
+<script>
+  function orderMonitor() {
+    return {
+      orders: [],
+      filterStatus: '',
+      filterID: null,
+      startDate: '',
+      endDate: '',
+      page: 1,
+      pageSize: 20,
+      total: 0,
+      // Drawer state
+      drawerOpen: false,
+      drawerLoading: false,
+      drawerError: '',
+      drawerOrder: null,
+      d: null, // detail response (shorthand)
+      // Tabs
+      activeTab: 'detail',
+      tabLoading: false,
+      planLogs: [],
+      phaseData: [],
+      logsLoaded: false,
+
+      get filteredOrders() {
+        return this.orders;
+      },
+
+      get totalPages() {
+        return Math.max(1, Math.ceil(this.total / this.pageSize));
+      },
+
+      _refreshTimer: null,
+
+      async init() {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('page'))
+          this.page = Math.max(1, parseInt(params.get('page')) || 1);
+        if (params.get('status')) this.filterStatus = params.get('status');
+        await this.loadOrders();
+        this.startAutoRefresh();
+      },
+
+      startAutoRefresh() {
+        // 每 30 秒刷新订单列表（状态由 cron 写入 DB，loadOrders 直接读最新）
+        this._refreshTimer = setInterval(() => this.loadOrders(), 30000);
+      },
+
+      syncURL() {
+        const params = new URLSearchParams();
+        params.set('page', this.page);
+        params.set('page_size', this.pageSize);
+        if (this.filterStatus) params.set('status', this.filterStatus);
+        if (this.filterID) params.set('id', this.filterID);
+        if (this.startDate) params.set('start_date', this.startDate);
+        if (this.endDate) params.set('end_date', this.endDate);
+        history.replaceState(
+          null,
+          '',
+          window.location.pathname + '?' + params.toString(),
+        );
+      },
+
+      async loadOrders() {
+        try {
+          const params = new URLSearchParams({
+            page: this.page,
+            page_size: this.pageSize,
+          });
+          if (this.filterStatus) params.set('status', this.filterStatus);
+          if (this.filterID) params.set('id', this.filterID);
+          if (this.startDate) params.set('start_date', this.startDate);
+          if (this.endDate) params.set('end_date', this.endDate);
+          const res = await fetch(`/zhuge/orders?${params}`);
+          const data = await res.json();
+          this.total = data.total || 0;
+          this.orders = (data.orders || []).map((o) => {
+            const tg =
+              typeof o.tag_group === 'string'
+                ? JSON.parse(o.tag_group)
+                : o.tag_group;
+            return {
+              order_id: o.id,
+              tag_name: tg?.name || '-',
+              platform_order_id: o.platform_order_id || '',
+              source: o.source || '',
+              status: o.status,
+              close_reason: o.close_reason || '',
+              created_at: o.created_at ? fmtDate(o.created_at) : '-',
+              campaign_id: o.campaign_id,
+              pay_url: o.pay_url || '',
+              promote_log_id: o.promote_log_id || null,
+              tf_money: o.tf_money || null,
+            };
+          });
+          this.syncURL();
+        } catch (e) {}
+      },
+
+      onFilterChange() {
+        this.page = 1;
+        this.loadOrders();
+      },
+      resetFilter() {
+        this.filterStatus = '';
+        this.filterID = null;
+        this.startDate = '';
+        this.endDate = '';
+        this.page = 1;
+        this.loadOrders();
+      },
+      goPage(p) {
+        if (p >= 1 && p <= this.totalPages) {
+          this.page = p;
+          this.loadOrders();
+        }
+      },
+
+      async openDetail(order) {
+        this.drawerOrder = order;
+        this.d = null;
+        this.drawerError = '';
+        this.drawerLoading = true;
+        this.drawerOpen = true;
+        this.activeTab = 'detail';
+        this.planLogs = [];
+        this.phaseData = [];
+        this.logsLoaded = false;
+
+        try {
+          const res = await fetch(`/zhuge/order/${order.order_id}/detail`);
+          const data = await res.json();
+          if (data.error) {
+            this.drawerError = data.error;
+          } else if (data.detail) {
+            this.d = data.detail;
+          } else if (data.msg) {
+            this.drawerError = data.msg;
+          }
+        } catch (e) {
+          this.drawerError = '获取详情失败: ' + e.message;
+        } finally {
+          this.drawerLoading = false;
+        }
+      },
+
+      async switchTab(tab) {
+        this.activeTab = tab;
+        // 计划日志：懒加载，从 /record 接口获取
+        if (tab === 'logs' && !this.logsLoaded && this.drawerOrder) {
+          this.tabLoading = true;
+          try {
+            const res = await fetch(
+              `/zhuge/order/${this.drawerOrder.order_id}/record`,
+            );
+            const data = await res.json();
+            this.planLogs = data.record || [];
+            this.logsLoaded = true;
+          } catch (e) {}
+          this.tabLoading = false;
+        }
+      },
+
+      closeDrawer() {
+        this.drawerOpen = false;
+      },
+
+      fmt(v) {
+        if (v == null) return '0';
+        const n = Number(v);
+        return isNaN(n) ? String(v) : n % 1 === 0 ? String(n) : n.toFixed(2);
+      },
+
+      fmtArray(v) {
+        if (!v) return '不限';
+        if (Array.isArray(v)) return v.length ? v.join('、') : '不限';
+        return String(v);
+      },
+
+      showToast(msg) {
+        Alpine.store('toast').show(msg);
+      },
+
+      pagesArray() {
+        return pageList(this.page, this.totalPages);
+      },
+
+      jumpPage(e) {
+        const v = parseInt(e.target.value);
+        if (v >= 1 && v <= this.totalPages) {
+          this.page = v;
+          this.loadOrders();
+        }
+        e.target.value = '';
+      },
+
+      async stopOrder(order) {
+        if (
+          !confirm(`确定停止订单 #${order.order_id} 的投放？此操作不可恢复。`)
+        )
+          return;
+        try {
+          const res = await fetch(`/zhuge/order/${order.order_id}/stop`, {
+            method: 'POST',
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            this.showToast('停止失败: ' + (data.error || '未知错误'));
+            return;
+          }
+          this.showToast('投放已停止');
+          await this.loadOrders();
+          if (
+            this.drawerOpen &&
+            this.drawerOrder?.order_id === order.order_id
+          ) {
+            this.closeDrawer();
+          }
+        } catch (e) {
+          this.showToast('停止失败: ' + e.message);
+        }
+      },
+    };
+  }
+</script>
+{{end}}

@@ -1,0 +1,235 @@
+version: '3'
+
+vars:
+  APP_NAME: f2v-promote
+  BIN_SERVER: ./bin/{{.APP_NAME}}
+  BIN_CRON_ORDER: ./bin/{{.APP_NAME}}-cron-check-order
+  BIN_CRON_STATS: ./bin/{{.APP_NAME}}-cron-stats
+  BIN_CRON_PROMOTE: ./bin/{{.APP_NAME}}-cron-promote
+  BIN_CRON_DISPATCHER: ./bin/{{.APP_NAME}}-cron-dispatcher
+  BIN_WORKER_CREATE_ORDER: ./bin/{{.APP_NAME}}-worker-create-order
+
+tasks:
+  default:
+    desc: 构建并运行 API 服务
+    cmds:
+      - task: run
+
+  kill:
+    desc: 杀掉占用 8000 端口的旧进程
+    cmds:
+      - lsof -ti:8000 | xargs kill -9 2>/dev/null || true
+    silent: true
+
+  build:
+    desc: 编译 API 服务
+    cmds:
+      - go build -o {{.BIN_SERVER}} ./cmd/server/
+    sources:
+      - ./**/*.go
+    generates:
+      - "{{.BIN_SERVER}}"
+
+  build-cron-check-order:
+    desc: 编译订单检查定时任务
+    cmds:
+      - go build -o {{.BIN_CRON_ORDER}} ./cmd/cron/check-order/
+    sources:
+      - ./**/*.go
+    generates:
+      - "{{.BIN_CRON_ORDER}}"
+
+  build-cron-stats:
+    desc: 编译飞书同步定时任务
+    cmds:
+      - go build -o {{.BIN_CRON_STATS}} ./cmd/cron/stats/
+    sources:
+      - ./**/*.go
+    generates:
+      - "{{.BIN_CRON_STATS}}"
+
+  build-cron-promote:
+    desc: 编译投放检测定时任务
+    cmds:
+      - go build -o {{.BIN_CRON_PROMOTE}} ./cmd/cron/promote/
+    sources:
+      - ./**/*.go
+    generates:
+      - "{{.BIN_CRON_PROMOTE}}"
+
+  build-cron-dispatcher:
+    desc: 编译投放派发定时任务
+    cmds:
+      - go build -o {{.BIN_CRON_DISPATCHER}} ./cmd/cron/dispatcher/
+    sources:
+      - ./**/*.go
+    generates:
+      - "{{.BIN_CRON_DISPATCHER}}"
+
+  build-worker-create-order:
+    desc: 编译微信加热计划 Worker
+    cmds:
+      - go build -o {{.BIN_WORKER_CREATE_ORDER}} ./cmd/worker/create-order/
+    sources:
+      - ./**/*.go
+    generates:
+      - "{{.BIN_WORKER_CREATE_ORDER}}"
+
+  build-all:
+    desc: 编译全部服务
+    deps: [build, build-cron-check-order, build-cron-stats, build-cron-promote, build-cron-dispatcher, build-worker-create-order]
+
+  run:
+    desc: 构建并启动 API 服务
+    deps: [kill, build]
+    cmds:
+      - "{{.BIN_SERVER}}"
+
+  run-cron-check-order:
+    desc: 构建并启动订单检查定时任务
+    deps: [build-cron-check-order]
+    cmds:
+      - "{{.BIN_CRON_ORDER}}"
+
+  run-cron-stats:
+    desc: 构建并启动飞书同步定时任务
+    deps: [build-cron-stats]
+    cmds:
+      - "{{.BIN_CRON_STATS}}"
+
+  run-cron-promote:
+    desc: 构建并启动投放检测定时任务
+    deps: [build-cron-promote]
+    cmds:
+      - "{{.BIN_CRON_PROMOTE}}"
+
+  run-cron-dispatcher:
+    desc: 构建并启动投放派发定时任务
+    deps: [build-cron-dispatcher]
+    cmds:
+      - "{{.BIN_CRON_DISPATCHER}}"
+
+  run-worker-create-order:
+    desc: 构建并启动微信加热 Worker（本地轮询模式）
+    deps: [build-worker-create-order]
+    cmds:
+      - "{{.BIN_WORKER_CREATE_ORDER}}"
+
+  run-all:
+    desc: 同时启动 API + 全部 Cron 服务
+    deps: [kill, build-all]
+    cmds:
+      - "{{.BIN_SERVER}} &"
+      - "{{.BIN_CRON_PROMOTE}} &"
+      - "{{.BIN_CRON_DISPATCHER}} &"
+      - "{{.BIN_WORKER_CREATE_ORDER}} &"
+      - "{{.BIN_CRON_ORDER}}"
+
+  dev:
+    desc: 开发模式（热重载 API）
+    deps: [kill]
+    cmds:
+      - |
+        which air > /dev/null 2>&1 || go install github.com/air-verse/air@latest
+        air -c .air.toml 2>/dev/null || air
+
+  tidy:
+    desc: 整理依赖
+    cmds:
+      - go mod tidy
+
+  vet:
+    desc: 代码检查
+    cmds:
+      - go vet ./...
+
+  mysql:
+    desc: 启动 MySQL（docker-compose）
+    cmds:
+      - docker-compose up -d
+
+  mysql-stop:
+    desc: 停止 MySQL
+    cmds:
+      - docker-compose down
+
+  migrate:
+    desc: 执行数据库初始化 SQL
+    cmds:
+      - docker exec -i f2v-mysql mysql -uroot -p${MYSQL_PASSWORD:-f2v_dev_123} < mysql/init.sql
+
+  clean:
+    desc: 清理构建产物
+    cmds:
+      - rm -rf ./bin ./target ./target-cron ./target-worker
+
+  # ── 部署 ──
+
+  deploy-api:
+    desc: 部署 API 服务到 FC
+    cmds:
+      - rm -rf target
+      - mkdir -p target
+      - GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o target/server ./cmd/server/
+      - s deploy -t deploy/server.prod.yaml -y
+
+  deploy-cron:
+    desc: "部署单个 Cron/Worker (用法: task deploy-cron NAME=check-order)"
+    vars:
+      NAME: '{{.NAME}}'
+    preconditions:
+      - sh: test -n "{{.NAME}}"
+        msg: "请指定 NAME，例如: task deploy-cron NAME=check-order"
+      - sh: test -f "deploy/cron-{{.NAME}}.prod.yaml"
+        msg: "配置文件 deploy/cron-{{.NAME}}.prod.yaml 不存在"
+      - sh: test -d "cmd/cron/{{.NAME}}"
+        msg: "代码目录 cmd/cron/{{.NAME}} 不存在"
+    cmds:
+      - echo "🚀 部署 cron/{{.NAME}} ..."
+      - mkdir -p target-cron/{{.NAME}}
+      - GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o target-cron/{{.NAME}}/main ./cmd/cron/{{.NAME}}/
+      - s deploy -t deploy/cron-{{.NAME}}.prod.yaml -y
+
+  deploy-cron-all:
+    desc: 部署全部 Cron 定时任务
+    cmds:
+      - task: deploy-cron
+        vars: { NAME: check-order }
+      - task: deploy-cron
+        vars: { NAME: stats }
+      - task: deploy-cron
+        vars: { NAME: promote }
+      - task: deploy-cron
+        vars: { NAME: dispatcher }
+
+  # ── Worker 部署 ──
+
+  deploy-worker:
+    desc: "部署单个 Worker (用法: task deploy-worker NAME=mns-consumer)"
+    vars:
+      NAME: '{{.NAME}}'
+    preconditions:
+      - sh: test -n "{{.NAME}}"
+        msg: "请指定 NAME，例如: task deploy-worker NAME=mns-consumer"
+      - sh: test -f "deploy/worker-{{.NAME}}.prod.yaml"
+        msg: "配置文件 deploy/worker-{{.NAME}}.prod.yaml 不存在"
+      - sh: test -d "cmd/worker/{{.NAME}}"
+        msg: "代码目录 cmd/worker/{{.NAME}} 不存在"
+    cmds:
+      - echo "🚀 部署 worker/{{.NAME}} ..."
+      - mkdir -p target-worker/{{.NAME}}
+      - GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o target-worker/{{.NAME}}/main ./cmd/worker/{{.NAME}}/
+      - s deploy -t deploy/worker-{{.NAME}}.prod.yaml -y
+
+  deploy-worker-all:
+    desc: 部署全部 Worker 服务
+    cmds:
+      - task: deploy-worker
+        vars: { NAME: create-order }
+
+  deploy-all:
+    desc: 部署 API + 全部 Cron + 全部 Worker
+    cmds:
+      - task: deploy-api
+      - task: deploy-cron-all
+      - task: deploy-worker-all

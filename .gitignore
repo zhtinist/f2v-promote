@@ -1,0 +1,39 @@
+# Environment & secrets
+.env
+.env.*
+!.env.example
+env/prod.json
+env/*.json
+!env/*.example.json
+
+# Build artifacts
+/bin
+/target
+/target-cron
+/target-worker
+/server
+/cron
+/stats
+
+# Local dev
+browser_data/
+logs/
+tmp/
+.task
+__pycache__/
+*.pyc
+venv/
+old_python
+
+# Data exports
+*.xlsx
+*.csv
+categories.json
+request.sh
+
+# OS / IDE
+.DS_Store
+
+# Internal AI tooling (not part of the product)
+.claude/
+.agents/

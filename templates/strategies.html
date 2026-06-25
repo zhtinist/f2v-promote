@@ -1,0 +1,276 @@
+{{template "base" .}}
+
+{{define "page_title"}}投放策略{{end}}
+
+{{define "content"}}
+<div x-data="strategiesPage()" x-init="init()">
+
+  <!-- 策略列表 -->
+  <div class="filter-bar" style="justify-content:flex-end;">
+      <button @click="showCreate()" class="btn btn-primary btn-sm">+ 新增策略</button>
+  </div>
+  <div class="card">
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>作者</th>
+            <th>平台</th>
+            <th>单小时播放量</th>
+            <th>点赞率</th>
+            <th>评论率</th>
+            <th>关注率</th>
+            <th>转发率</th>
+            <th>完播率</th>
+            <th>停投系数</th>
+            <th>粉丝成本</th>
+            <th>保护(分)</th>
+            <th>飞书通知</th>
+            <th>状态</th>
+            <th>最后检测</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="s in strategies" :key="s.id">
+            <tr>
+              <td>
+                <span x-text="s.author_name || ('ID:' + s.author_id)"></span>
+              </td>
+              <td x-text="platformName(s.platform)"></td>
+              <td x-text="s.hourly_play_threshold"></td>
+              <td x-text="s.like_rate_threshold + '%'"></td>
+              <td x-text="s.comment_rate_threshold + '%'"></td>
+              <td x-text="s.follow_rate_threshold + '%'"></td>
+              <td x-text="s.share_rate_threshold + '%'"></td>
+              <td x-text="s.completion_rate_threshold + '%'"></td>
+              <td x-text="s.stop_coefficient"></td>
+              <td x-text="'¥' + s.fan_cost_threshold"></td>
+              <td x-text="s.stop_protection_min + '分'"></td>
+              <td>
+                <span class="badge" :class="s.notify_feishu ? 'badge-info' : 'badge-muted'"
+                      x-text="s.notify_feishu ? '开启' : '关闭'"></span>
+              </td>
+              <td>
+                <span class="badge" :class="s.enabled ? 'badge-success' : 'badge-muted'"
+                      @click="toggleEnabled(s)" style="cursor:pointer;"
+                      x-text="s.enabled ? '已启用' : '已禁用'"></span>
+              </td>
+              <td class="text-muted text-sm" x-text="fmtDate(s.last_checked_at)"></td>
+              <td>
+                <div class="btn-group">
+                  <button @click="showEdit(s)" class="btn btn-outline btn-xs">编辑</button>
+                  <button @click="remove(s)" class="btn btn-outline-danger btn-xs">删除</button>
+                </div>
+              </td>
+            </tr>
+          </template>
+          <tr x-show="strategies.length === 0">
+            <td colspan="15" class="empty-row">暂无策略，点击右上角新增</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 创建/编辑 Drawer -->
+  <div class="drawer-overlay" x-show="drawerOpen" x-transition.opacity @click="drawerOpen = false" x-cloak></div>
+  <div class="drawer" :class="drawerOpen ? 'drawer-open' : ''" x-cloak>
+    <div class="drawer-header">
+      <div class="drawer-title" x-text="editId ? '编辑策略' : '新增策略'"></div>
+      <button class="drawer-close" @click="drawerOpen = false">&times;</button>
+    </div>
+    <div class="drawer-body">
+      <form @submit.prevent="save()">
+        <template x-if="!editId">
+          <div>
+            <div class="form-group">
+              <label>作者ID</label>
+              <input type="number" x-model.number="form.author_id" placeholder="输入作者ID" required>
+            </div>
+            <div class="form-group">
+              <label>账号ID</label>
+              <input type="number" x-model.number="form.account_id" placeholder="输入账号ID" required>
+            </div>
+            <div class="form-group">
+              <label>平台</label>
+              <select x-model="form.platform">
+                <option value="weixin">微信</option>
+                <option value="douyin">抖音</option>
+              </select>
+            </div>
+          </div>
+        </template>
+        <div class="form-group">
+          <label>单小时播放量标准值</label>
+          <input type="number" x-model.number="form.hourly_play_threshold" placeholder="如 2872" required>
+        </div>
+        <div class="form-grid-2">
+          <div class="form-group">
+            <label>点赞率 (%)</label>
+            <input type="number" step="0.001" x-model.number="form.like_rate_threshold" placeholder="1.310">
+          </div>
+          <div class="form-group">
+            <label>评论率 (%)</label>
+            <input type="number" step="0.001" x-model.number="form.comment_rate_threshold" placeholder="0.160">
+          </div>
+          <div class="form-group">
+            <label>关注率 (%)</label>
+            <input type="number" step="0.001" x-model.number="form.follow_rate_threshold" placeholder="0.713">
+          </div>
+          <div class="form-group">
+            <label>转发率 (%)</label>
+            <input type="number" step="0.001" x-model.number="form.share_rate_threshold" placeholder="8.099">
+          </div>
+          <div class="form-group">
+            <label>完播率 (%)</label>
+            <input type="number" step="0.001" x-model.number="form.completion_rate_threshold" placeholder="17.45">
+          </div>
+        </div>
+        <div class="form-grid-3">
+          <div class="form-group">
+            <label>停投系数</label>
+            <input type="number" step="0.01" x-model.number="form.stop_coefficient" placeholder="0.7">
+          </div>
+          <div class="form-group">
+            <label>粉丝成本阈值 (元)</label>
+            <input type="number" step="0.01" x-model.number="form.fan_cost_threshold" placeholder="0.80">
+          </div>
+          <div class="form-group">
+            <label>停投保护 (分钟)</label>
+            <input type="number" x-model.number="form.stop_protection_min" placeholder="30">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="checkbox-label">
+            <input type="checkbox" x-model="form.notify_feishu">
+            <span>启用飞书通知</span>
+          </label>
+        </div>
+        <div class="btn-group-lg">
+          <button type="submit" class="btn btn-primary" :disabled="saving">
+            <span x-show="!saving" x-text="editId ? '保存' : '创建'"></span>
+            <span x-show="saving">提交中...</span>
+          </button>
+          <button type="button" @click="drawerOpen = false" class="btn btn-secondary">取消</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+
+</div>
+{{end}}
+
+{{define "scripts"}}
+<script>
+function strategiesPage() {
+  return {
+    strategies: [],
+    drawerOpen: false,
+    editId: null,
+    saving: false,
+    form: {},
+
+
+    async init() {
+      await this.loadStrategies();
+    },
+
+    async loadStrategies() {
+      try {
+        const res = await fetch('/strategies');
+        const data = await res.json();
+        this.strategies = data.strategies || [];
+      } catch (e) {}
+    },
+
+    resetForm() {
+      this.form = {
+        author_id: null,
+        account_id: null,
+        platform: 'weixin',
+        hourly_play_threshold: null,
+        like_rate_threshold: 0,
+        comment_rate_threshold: 0,
+        follow_rate_threshold: 0,
+        share_rate_threshold: 0,
+        completion_rate_threshold: 0,
+        stop_coefficient: 0.7,
+        fan_cost_threshold: 0.8,
+        stop_protection_min: 30,
+        notify_feishu: false,
+      };
+    },
+
+    showCreate() {
+      this.editId = null;
+      this.resetForm();
+      this.drawerOpen = true;
+    },
+
+    showEdit(s) {
+      this.editId = s.id;
+      this.form = {
+        hourly_play_threshold: s.hourly_play_threshold,
+        like_rate_threshold: s.like_rate_threshold,
+        comment_rate_threshold: s.comment_rate_threshold,
+        follow_rate_threshold: s.follow_rate_threshold,
+        share_rate_threshold: s.share_rate_threshold,
+        completion_rate_threshold: s.completion_rate_threshold,
+        stop_coefficient: s.stop_coefficient,
+        fan_cost_threshold: s.fan_cost_threshold,
+        stop_protection_min: s.stop_protection_min,
+        notify_feishu: s.notify_feishu || false,
+      };
+      this.drawerOpen = true;
+    },
+
+    async save() {
+      this.saving = true;
+      try {
+        const url = this.editId ? `/strategies/${this.editId}` : '/strategies';
+        const method = this.editId ? 'PUT' : 'POST';
+        const res = await fetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(this.form),
+        });
+        if (!res.ok) { const e = await res.json(); throw new Error(e.error || '操作失败'); }
+        this.showToast(this.editId ? '策略已更新' : '策略已创建');
+        this.drawerOpen = false;
+        await this.loadStrategies();
+      } catch (e) { this.showToast('错误: ' + e.message); }
+      finally { this.saving = false; }
+    },
+
+    async toggleEnabled(s) {
+      try {
+        const res = await fetch(`/strategies/${s.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: !s.enabled }),
+        });
+        if (!res.ok) throw new Error('操作失败');
+        s.enabled = !s.enabled;
+        this.showToast(s.enabled ? '已启用' : '已禁用');
+      } catch (e) { this.showToast('错误: ' + e.message); }
+    },
+
+    async remove(s) {
+      const name = s.author_name || `#${s.id}`;
+      if (!confirm(`确定删除策略「${name}」？`)) return;
+      try {
+        const res = await fetch(`/strategies/${s.id}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('删除失败');
+        this.showToast('已删除');
+        await this.loadStrategies();
+      } catch (e) { this.showToast('错误: ' + e.message); }
+    },
+
+    showToast(msg) { Alpine.store('toast').show(msg); }
+  };
+}
+</script>
+{{end}}
+

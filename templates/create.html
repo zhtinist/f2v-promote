@@ -1,0 +1,338 @@
+{{template "base" .}}
+
+{{define "page_title"}}创建投放{{end}}
+
+{{define "content"}}
+<div x-data="createCampaign()" x-init="init()">
+
+  <!-- ═══ Step 1: 输入文案 + 选账号 ═══ -->
+  <div class="card step-card">
+    <div class="step-header" @click="openStep = openStep === 1 ? 0 : 1">
+      <div class="step-badge" :class="step > 1 ? 'badge-done' : 'badge-active'">1</div>
+      <div class="step-title">输入口播文案</div>
+      <div class="step-summary" x-show="step > 1" x-text="'账号: ' + (accounts.find(a => a.id === accountId)?.name || '-') + ' · ' + tagGroupCount + ' 组标签'"></div>
+      <svg class="step-chevron" :class="{ 'chevron-open': openStep === 1 }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+    </div>
+    <div class="step-body" x-show="openStep === 1" x-collapse>
+      <form @submit.prevent="generateTags()">
+        <div class="form-group">
+          <label>选择账号</label>
+          <select x-model="accountId" class="form-input" required>
+            <template x-for="a in accounts" :key="a.id">
+              <option :value="a.id" x-text="a.name"></option>
+            </template>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>口播文案</label>
+          <textarea x-model="script" class="form-input" rows="5" placeholder="粘贴视频口播文案..." required></textarea>
+        </div>
+        <div style="display:flex;gap:16px;">
+          <div class="form-group" style="flex:1;">
+            <label>标签组数量</label>
+            <input type="number" x-model.number="tagGroupCount" class="form-input" min="1" max="20">
+          </div>
+          <div class="form-group" style="flex:1;">
+            <label>成本阈值 (元/关注)</label>
+            <input type="number" x-model="costThreshold" class="form-input" step="0.1" min="0.1">
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary" :disabled="generating || !accountId || !script.trim()">
+          <span x-show="!generating">生成标签</span>
+          <span x-show="generating">AI 生成中...</span>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ═══ Step 2: 预览标签组 ═══ -->
+  <div class="card step-card">
+    <div class="step-header" @click="openStep = openStep === 2 ? 0 : 2">
+      <div class="step-badge" :class="step > 2 ? 'badge-done' : (step >= 2 ? 'badge-active' : '')">2</div>
+      <div class="step-title">预览标签组</div>
+      <div class="step-summary" x-show="step > 2" x-text="tagGroups.length + ' 组标签'"></div>
+      <svg class="step-chevron" :class="{ 'chevron-open': openStep === 2 }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+    </div>
+    <div class="step-body" x-show="openStep === 2" x-collapse>
+      <div class="tag-grid">
+        <template x-for="(g, i) in tagGroups" :key="i">
+          <div class="tag-card">
+            <div class="tag-card-head">
+              <strong x-text="g.name"></strong>
+              <button @click="tagGroups.splice(i, 1)" class="btn-icon-sm" title="删除">&times;</button>
+            </div>
+            <div class="tag-card-body">
+              <div><span class="text-muted">标签:</span> <span x-text="fmtTags(g.interest_tag_list)"></span></div>
+              <div><span class="text-muted">年龄:</span> <span x-text="fmtAges(g.ages)"></span> <span class="text-muted" style="margin-left:8px;">性别:</span> <span x-text="g.sex == null ? '不限' : (g.sex === 1 ? '男' : '女')"></span></div>
+            </div>
+          </div>
+        </template>
+      </div>
+      <div style="margin-top: 16px;">
+        <button @click="goStep3()" class="btn btn-primary" :disabled="tagGroups.length === 0">下一步</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Step 3: 选择作者和视频 ═══ -->
+  <div class="card step-card">
+    <div class="step-header" @click="openStep = openStep === 3 ? 0 : 3; if(openStep === 3 && authors.length === 0) goStep3()">
+      <div class="step-badge" :class="step > 3 ? 'badge-done' : (step >= 3 ? 'badge-active' : '')">3</div>
+      <div class="step-title">选择作者和视频</div>
+      <div class="step-summary" x-show="step > 3" x-text="(authors[selectedAuthorIdx]?.nickname || '-') + ' · ' + (videos[selectedVideoIdx]?.description || videos[selectedVideoIdx]?.desc || '').substring(0, 20)"></div>
+      <svg class="step-chevron" :class="{ 'chevron-open': openStep === 3 }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+    </div>
+    <div class="step-body" x-show="openStep === 3" x-collapse>
+      <!-- 作者选择 -->
+      <div class="form-group">
+        <label>选择作者</label>
+        <div x-show="authors.length === 0" class="empty-hint">
+          暂无作者，请先在 <a href="/authors-page">作者管理</a> 刷新作者列表
+        </div>
+        <div class="author-grid">
+          <template x-for="(a, i) in authors" :key="a.id">
+            <div class="select-card" :class="{ selected: selectedAuthorIdx === i }" @click="selectAuthor(i)">
+              <img :src="a.avatar_url || '/static/img/default-avatar.png'" class="select-card-avatar" alt="">
+              <div class="select-card-name" x-text="a.nickname || a.username"></div>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <!-- 视频选择 -->
+      <div class="form-group" x-show="selectedAuthorIdx !== null">
+        <label>选择视频</label>
+        <!-- 日期筛选 -->
+        <div class="video-filter">
+          <span class="text-muted">日期范围</span>
+          <label class="radio-label"><input type="radio" value="7d" x-model="dateRange" @change="onDateRangeChange()"> 近七天</label>
+          <label class="radio-label"><input type="radio" value="3m" x-model="dateRange" @change="onDateRangeChange()"> 近3个月</label>
+          <label class="radio-label"><input type="radio" value="custom" x-model="dateRange" @change="onDateRangeChange()"> 自定义</label>
+          <template x-if="dateRange === 'custom'">
+            <div style="display:inline-flex;align-items:center;gap:6px;">
+              <input type="date" x-model="customBegin" class="date-input" @change="fetchVideos()">
+              <span style="color:#374151;">至</span>
+              <input type="date" x-model="customEnd" class="date-input" @change="fetchVideos()">
+            </div>
+          </template>
+        </div>
+        <div x-show="loadingVideos" class="text-muted" style="padding:8px 0;">加载视频中...</div>
+        <div class="video-scroll">
+          <div class="video-grid">
+            <template x-for="(v, i) in videos" :key="i">
+              <div class="select-card video-select-card" :class="{ selected: selectedVideoIdx === i }" @click="selectedVideoIdx = i">
+                <img :src="v.thumbUrl || v.cover_url || v.coverUrl || ''" class="video-thumb" alt="" onerror="this.style.display='none'">
+                <div class="select-card-name" x-text="(v.description || v.desc || '无描述').substring(0, 30)"></div>
+              </div>
+            </template>
+          </div>
+          <div x-show="!loadingVideos && videos.length === 0" class="empty-hint">该日期范围内暂无视频</div>
+        </div>
+      </div>
+
+      <div style="margin-top: 16px;">
+        <button @click="step = 4; openStep = 4" class="btn btn-primary" :disabled="selectedVideoIdx === null">下一步</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Step 4: 确认并提交 ═══ -->
+  <div class="card step-card">
+    <div class="step-header" @click="openStep = openStep === 4 ? 0 : 4">
+      <div class="step-badge" :class="step >= 4 ? 'badge-active' : ''">4</div>
+      <div class="step-title">确认并提交</div>
+      <svg class="step-chevron" :class="{ 'chevron-open': openStep === 4 }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+    </div>
+    <div class="step-body" x-show="openStep === 4" x-collapse>
+      <table class="confirm-table">
+        <tr><td class="text-muted">账号</td><td x-text="accounts.find(a => a.id === accountId)?.name || '-'"></td></tr>
+        <tr><td class="text-muted">文案</td><td x-text="script.substring(0, 60) + (script.length > 60 ? '...' : '')"></td></tr>
+        <tr><td class="text-muted">标签组</td><td x-text="tagGroups.length + ' 组'"></td></tr>
+        <tr><td class="text-muted">作者</td><td x-text="authors[selectedAuthorIdx]?.nickname || '-'"></td></tr>
+        <tr><td class="text-muted">视频</td><td x-text="(videos[selectedVideoIdx]?.description || '-').substring(0, 40)"></td></tr>
+      </table>
+
+      <div style="margin-top: 16px;">
+        <button @click="confirmAndSubmit()" class="btn btn-primary" :disabled="confirming || isProcessing">
+          <span x-show="!confirming && !isProcessing">确认投放</span>
+          <span x-show="confirming">创建订单中...</span>
+          <span x-show="isProcessing">提交中...</span>
+        </button>
+      </div>
+
+      <!-- 提交进度 -->
+      <div x-show="createdOrders.length > 0" style="margin-top:20px;padding-top:16px;border-top:1px solid #e5e7eb;">
+        <div style="font-weight:600;margin-bottom:12px;" x-text="progressText"></div>
+        <template x-for="(o, i) in createdOrders" :key="o.order_id">
+          <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f3f4f6;">
+            <span style="flex:1;" x-text="o.tag_name"></span>
+            <span class="status-tag" :class="'status-'+o.status" x-text="statusText(o.status)"></span>
+            <span x-show="o.error_info" style="color:#dc2626;font-size:12px;" x-text="o.error_info"></span>
+          </div>
+        </template>
+        <div x-show="!isProcessing && createdOrders.length > 0" style="margin-top:16px;">
+          <a href="/orders-page" class="btn btn-primary">查看订单列表</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+</div>
+{{end}}
+
+{{define "scripts"}}
+<script>
+function createCampaign() {
+  return {
+    step: 1, openStep: 1,
+    accounts: [], accountId: '', script: '', tagGroupCount: 3, costThreshold: 1.0, generating: false,
+    tagGroups: [], tagMap: {}, pendingCampaignId: null,
+    authors: [], selectedAuthorIdx: null, videos: [], selectedVideoIdx: null, loadingVideos: false,
+    dateRange: '3m', customBegin: '', customEnd: '',
+    confirming: false, isProcessing: false, createdOrders: [], progressText: '',
+    SUBMIT_INTERVAL: 10000,
+
+    async init() { await this.loadAccounts(); },
+
+    async loadAccounts() {
+      try {
+        const res = await fetch('/zhuge/accounts?page=1&page_size=100');
+        const data = await res.json();
+        this.accounts = data.list || [];
+        if (this.accounts.length > 0 && !this.accountId) this.accountId = this.accounts[0].id;
+      } catch (e) {}
+    },
+
+    async generateTags() {
+      if (!this.script.trim() || !this.accountId) return;
+      this.generating = true;
+      try {
+        const params = new URLSearchParams();
+        params.append('script', this.script);
+        params.append('account_id', this.accountId);
+        params.append('cost_threshold', this.costThreshold);
+        params.append('tag_group_count', this.tagGroupCount);
+        const res = await fetch('/zhuge/create', { method: 'POST', body: params });
+        if (!res.ok) { const e = await res.json(); throw new Error(e.error || e.msg || '请求失败'); }
+        const data = await res.json();
+        this.tagGroups = data.tag_groups;
+        this.tagMap = data.tag_map || {};
+        this.pendingCampaignId = data.campaign_id;
+        this.step = 2; this.openStep = 2;
+        this.showToast(`已生成 ${this.tagGroups.length} 组标签`);
+      } catch (e) { this.showToast('错误: ' + e.message); }
+      finally { this.generating = false; }
+    },
+
+    async goStep3() {
+      this.step = 3; this.openStep = 3;
+      await this.loadAuthors();
+    },
+
+    async loadAuthors() {
+      try {
+        const res = await fetch(`/zhuge/accounts/${this.accountId}/authors?page=1&page_size=200`);
+        const data = await res.json();
+        this.authors = data.list || [];
+        if (this.authors.length > 0 && this.selectedAuthorIdx === null) this.selectAuthor(0);
+      } catch (e) { this.showToast('获取作者失败'); }
+    },
+
+    async selectAuthor(idx) {
+      this.selectedAuthorIdx = idx;
+      this.videos = []; this.selectedVideoIdx = null;
+      await this.fetchVideos();
+    },
+
+    getDateParams() {
+      const now = new Date();
+      const fmt = (d) => d.toISOString().split('T')[0];
+      const endStr = fmt(now) + ' 23:59:59';
+      if (this.dateRange === '7d') {
+        const begin = new Date(now); begin.setDate(begin.getDate() - 7);
+        return { begin_date: fmt(begin) + ' 00:00:00', end_date: endStr };
+      } else if (this.dateRange === '3m') {
+        const begin = new Date(now); begin.setMonth(begin.getMonth() - 3);
+        return { begin_date: fmt(begin) + ' 00:00:00', end_date: endStr };
+      } else if (this.dateRange === 'custom' && this.customBegin && this.customEnd) {
+        return { begin_date: this.customBegin + ' 00:00:00', end_date: this.customEnd + ' 23:59:59' };
+      }
+      return {};
+    },
+
+    onDateRangeChange() {
+      if (this.dateRange !== 'custom') this.fetchVideos();
+    },
+
+    async fetchVideos() {
+      if (this.selectedAuthorIdx === null) return;
+      this.loadingVideos = true; this.videos = []; this.selectedVideoIdx = null;
+      try {
+        const p = new URLSearchParams();
+        p.append('account_id', this.accountId);
+        p.append('username', this.authors[this.selectedAuthorIdx].username);
+        const dates = this.getDateParams();
+        if (dates.begin_date) p.append('begin_date', dates.begin_date);
+        if (dates.end_date) p.append('end_date', dates.end_date);
+        const res = await fetch('/zhuge/videos', { method: 'POST', body: p });
+        const data = await res.json();
+        this.videos = data.videos || [];
+        if (this.videos.length > 0) this.selectedVideoIdx = 0;
+      } catch (e) { this.showToast('获取视频失败'); }
+      finally { this.loadingVideos = false; }
+    },
+
+    async confirmAndSubmit() {
+      if (!this.pendingCampaignId || this.selectedVideoIdx === null) return;
+      this.confirming = true;
+      try {
+        const res = await fetch(`/zhuge/${this.pendingCampaignId}/confirm`, { method: 'POST' });
+        if (!res.ok) { const e = await res.json(); throw new Error(e.error || e.msg || '请求失败'); }
+        const data = await res.json();
+        this.createdOrders = (data.orders || []).map((o, i) => ({
+          order_id: o.id, tag_name: this.tagGroups[i]?.name || `标签组${i+1}`, status: 'init', error_info: null,
+        }));
+      } catch (e) { this.showToast('确认失败: ' + e.message); this.confirming = false; return; }
+      this.confirming = false;
+      const video = this.videos[this.selectedVideoIdx];
+      const author = this.authors[this.selectedAuthorIdx];
+      await this.processOrders(video, author);
+    },
+
+    async processOrders(video, author) {
+      this.isProcessing = true;
+      const total = this.createdOrders.length;
+      for (let i = 0; i < total; i++) {
+        const order = this.createdOrders[i];
+        if (order.status !== 'init') continue;
+        if (i > 0) { for (let s = 10; s > 0; s--) { this.progressText = `等待 ${s}s 后创建下一笔...`; await this.sleep(1000); } }
+        const label = `[${i+1}/${total}] ${order.tag_name}`;
+        this.progressText = `${label} 正在创建计划...`;
+        try {
+          const params = new URLSearchParams();
+          params.append('video_json', JSON.stringify(video));
+          params.append('author_json', JSON.stringify(author));
+          const res = await fetch(`/zhuge/order/${order.order_id}/submit`, { method: 'POST', body: params });
+          const data = await res.json();
+          order.status = data.status;
+          if (data.error) order.error_info = data.error;
+          if (data.status === 'failed') this.showToast(`${label} 创建失败`);
+          else this.showToast(`${label} 已提交`);
+        } catch (e) { order.status = 'failed'; order.error_info = e.message; this.showToast(`${label} 异常`); }
+      }
+      const pending = this.createdOrders.filter(o => o.status === 'pending').length;
+      const failed = this.createdOrders.filter(o => o.status === 'failed').length;
+      this.isProcessing = false;
+      this.progressText = `全部完成：${pending} 个待支付 / ${failed} 个失败`;
+    },
+
+    fmtTags(list) { return list?.length ? list.map(t => this.tagMap[t.interestTag] || t.interestTag).join(', ') : '无'; },
+    fmtAges(ages) { if (!ages?.length) return '全部'; const m = {1:'18-23',2:'24-30',3:'31-40',4:'41-50',5:'50+'}; return ages.map(a => m[a]||a).join(', '); },
+    statusText(s) { return {init:'初始化',pending:'待支付',review:'审核中',active:'加热中',failed:'失败',closed:'已关闭'}[s] || s; },
+    sleep(ms) { return new Promise(r => setTimeout(r, ms)); },
+    showToast(msg) { Alpine.store('toast').show(msg); }
+  };
+}
+</script>
+{{end}}

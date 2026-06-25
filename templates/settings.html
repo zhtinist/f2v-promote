@@ -1,0 +1,148 @@
+{{template "base" .}}
+
+{{define "page_title"}}提示词管理{{end}}
+
+{{define "content"}}
+<div x-data="promptsPage()" x-init="init()">
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">提示词模板</div>
+      <button @click="openNew()" class="btn btn-primary btn-sm">+ 新建模板</button>
+    </div>
+    <div class="hint" style="padding: 16px 24px 0;">支持变量：<code>{count}</code> <code>{script}</code> <code>{available_tags}</code></div>
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>模板标识</th>
+            <th>显示名称</th>
+            <th>说明</th>
+            <th>更新时间</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="t in templates" :key="t.name">
+            <tr>
+              <td><code class="code-tag" x-text="t.name"></code></td>
+              <td x-text="t.title"></td>
+              <td class="text-muted text-sm col-truncate" x-text="t.description || '-'"></td>
+              <td class="text-muted text-sm" x-text="fmtDate(t.updated_at)"></td>
+              <td class="col-nowrap">
+                <button @click="openEdit(t)" class="btn btn-outline btn-xs">编辑</button>
+                <button @click="remove(t.name)" class="btn btn-outline btn-xs text-danger">删除</button>
+              </td>
+            </tr>
+          </template>
+          <tr x-show="templates.length === 0">
+            <td colspan="5" class="empty-row">暂无模板，点击右上角新建</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 编辑抽屉 -->
+  <div class="drawer-overlay" x-show="drawerOpen" x-transition.opacity @click="drawerOpen = false" x-cloak></div>
+  <div class="drawer" :class="drawerOpen ? 'drawer-open' : ''" x-cloak>
+    <div class="drawer-header">
+      <div class="drawer-title" x-text="isNew ? '新建提示词模板' : '编辑提示词模板'"></div>
+      <button class="drawer-close" @click="drawerOpen = false">&times;</button>
+    </div>
+    <div class="drawer-body">
+      <form @submit.prevent="save()">
+        <div class="form-group">
+          <label>模板标识</label>
+          <input type="text" x-model="form.name" :disabled="!isNew" placeholder="如: zhuge_tags" required class="mono">
+          <div class="hint" style="margin-top:4px;">唯一标识，创建后不可修改</div>
+        </div>
+        <div class="form-group">
+          <label>显示名称</label>
+          <input type="text" x-model="form.title" placeholder="如: 诸葛智投标签生成" required>
+        </div>
+        <div class="form-group">
+          <label>说明</label>
+          <input type="text" x-model="form.description" placeholder="可选">
+        </div>
+        <div class="form-group">
+          <label>提示词内容</label>
+          <textarea x-model="form.content" rows="20" required class="mono"></textarea>
+          <div class="hint" style="margin-top:4px;">可用变量：<code>{count}</code> 标签组数量，<code>{script}</code> 口播文案，<code>{available_tags}</code> 平台标签列表</div>
+        </div>
+        <div class="btn-group-lg">
+          <button type="submit" class="btn btn-primary" :disabled="saving">
+            <span x-show="!saving">保存</span>
+            <span x-show="saving">保存中...</span>
+          </button>
+          <button type="button" @click="drawerOpen = false" class="btn btn-secondary">取消</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+
+</div>
+{{end}}
+
+{{define "scripts"}}
+<script>
+function promptsPage() {
+  return {
+    templates: [],
+    drawerOpen: false,
+    isNew: true,
+    saving: false,
+    form: { name: '', title: '', content: '', description: '' },
+
+    async init() { await this.load(); },
+
+    async load() {
+      try {
+        const res = await fetch('/prompts');
+        const data = await res.json();
+        this.templates = data.templates || [];
+      } catch (e) {}
+    },
+
+    openNew() {
+      this.isNew = true;
+      this.form = { name: '', title: '', content: '', description: '' };
+      this.drawerOpen = true;
+    },
+
+    openEdit(t) {
+      this.isNew = false;
+      this.form = { name: t.name, title: t.title, content: t.content, description: t.description || '' };
+      this.drawerOpen = true;
+    },
+
+    async save() {
+      if (!this.form.name.trim() || !this.form.content.trim()) { this.showToast('名称和内容不能为空'); return; }
+      this.saving = true;
+      try {
+        const res = await fetch('/prompts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.form) });
+        if (!res.ok) { const e = await res.json(); throw new Error(e.error || e.msg || '保存失败'); }
+        this.showToast('保存成功');
+        this.drawerOpen = false;
+        await this.load();
+      } catch (e) { this.showToast('错误: ' + e.message); }
+      finally { this.saving = false; }
+    },
+
+    async remove(name) {
+      if (!confirm(`确定删除模板 "${name}"？`)) return;
+      try {
+        const res = await fetch(`/prompts/${name}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('删除失败');
+        this.showToast('已删除');
+        await this.load();
+      } catch (e) { this.showToast('错误: ' + e.message); }
+    },
+
+    fmtDate(d) { return fmtDate(d); },
+
+    showToast(msg) { Alpine.store('toast').show(msg); }
+  };
+}
+</script>
+{{end}}

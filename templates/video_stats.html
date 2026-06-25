@@ -1,0 +1,488 @@
+{{template "base" .}} {{define "page_title"}}视频统计{{end}} {{define
+"content"}}
+<div x-data="videoStatsPage()" x-init="init()">
+  <div class="filter-bar">
+      <div class="form-group">
+        <label>作者</label>
+        <select x-model="filters.author_id" @change="page=1; loadVideos(); load()">
+          <option value="">全部</option>
+          <template x-for="a in authors" :key="a.id">
+            <option :value="a.id" x-text="a.nickname"></option>
+          </template>
+        </select>
+      </div>
+      <div class="form-group" x-data="{ vdOpen: false }" style="position:relative;">
+        <label>视频</label>
+        <div class="custom-select" @click="vdOpen = !vdOpen">
+          <span x-text="videoLabel()"></span>
+          <svg width="10" height="6" viewBox="0 0 10 6" style="flex-shrink:0;"><path d="M1 1l4 4 4-4" stroke="#6b7280" fill="none" stroke-width="1.5"/></svg>
+        </div>
+        <div class="custom-dropdown" x-show="vdOpen" @click.outside="vdOpen = false" x-cloak
+             @scroll.debounce.100ms="onVideoScroll($event)">
+          <div class="custom-dropdown-item" :class="!filters.author_video_id ? 'active' : ''"
+               @click="filters.author_video_id = ''; page=1; load(); vdOpen = false;">全部</div>
+          <template x-for="v in videos" :key="v.id">
+            <div class="custom-dropdown-item" :class="filters.author_video_id == v.id ? 'active' : ''"
+                 @click="filters.author_video_id = String(v.id); page=1; load(); vdOpen = false;"
+                 x-text="(v.description || '').substring(0, 30) || ('ID:' + v.id)"></div>
+          </template>
+          <div x-show="videoLoading" style="text-align:center;padding:8px;color:#9ca3af;font-size:12px;">加载中...</div>
+          <div x-show="!videoHasMore && videos.length > 0" style="text-align:center;padding:6px;color:#d1d5db;font-size:11px;">已加载全部</div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>采集日期(起)</label>
+        <input type="date" x-model="filters.date_from" class="date-input" />
+      </div>
+      <div class="form-group">
+        <label>采集日期(止)</label>
+        <input type="date" x-model="filters.date_to" class="date-input" />
+      </div>
+      <div class="form-group">
+        <label>飞书同步</label>
+        <select x-model="filters.feishu_synced">
+          <option value="">全部</option>
+          <option value="true">已同步</option>
+          <option value="false">未同步</option>
+        </select>
+      </div>
+      <div class="filter-actions">
+        <button @click="page=1; load()" class="btn btn-primary btn-sm">
+          筛选
+        </button>
+        <button @click="resetFilters()" class="btn-reset">重置</button>
+      </div>
+  </div>
+  <div class="card">
+    <!-- 表格 -->
+    <div class="table-container">
+      <div x-show="loading" class="table-loading-overlay">
+        <span class="spinner"></span>
+      </div>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th class="col-id">ID</th>
+              <th class="col-desc">描述</th>
+              <th>作者</th>
+              <th>采集日期</th>
+              <th class="num">播放</th>
+              <th class="num">点赞</th>
+              <th class="num">评论</th>
+              <th>完播率</th>
+              <th>飞书</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="s in list" :key="s.id">
+              <tr>
+                <td class="id-col" x-text="s.id"></td>
+                <td
+                  style="
+                    max-width: 200px;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                  "
+                  x-text="s.description || '-'"
+                  :title="s.description"
+                ></td>
+                <td
+                  x-text="authorNameMap[s.author_id] || s.author_id || '-'"
+                ></td>
+                <td x-text="s.collect_date || '-'"></td>
+                <td class="num" x-text="fmtNum(s.play_count)"></td>
+                <td class="num" x-text="fmtNum(s.like_count)"></td>
+                <td class="num" x-text="fmtNum(s.comment_count)"></td>
+                <td x-text="fmtRate(s.completion_rate)"></td>
+                <td>
+                  <span
+                    class="status-tag"
+                    :class="s.feishu_synced ? 'status-active' : 'status-init'"
+                    x-text="s.feishu_synced ? '已同步' : '未同步'"
+                  ></span>
+                </td>
+                <td>
+                  <button @click="openView(s)" class="btn btn-outline btn-xs">
+                    详情
+                  </button>
+                </td>
+              </tr>
+            </template>
+            <template x-if="list.length === 0 && !loading">
+              <tr>
+                <td colspan="10">
+                  <div class="empty-state">
+                    <div class="empty-state-icon">
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.5"
+                      >
+                        <path d="M12 20V10" />
+                        <path d="M18 20V4" />
+                        <path d="M6 20v-4" />
+                      </svg>
+                    </div>
+                    <div class="empty-state-title">暂无统计数据</div>
+                    <div class="empty-state-desc">
+                      数据由定时任务自动采集同步
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <!-- 分页器 -->
+    <div class="pagination" x-show="total > 0">
+      <div class="pagination-left">
+        <span x-text="`共 ${fmtNum(total)} 条`"></span>
+        <select
+          class="page-size-select"
+          x-model.number="pageSize"
+          @change="page=1; load()"
+        >
+          <option value="20">20 条/页</option>
+          <option value="50">50 条/页</option>
+          <option value="100">100 条/页</option>
+        </select>
+      </div>
+      <div class="pagination-center">
+        <button class="page-btn" :disabled="page <= 1" @click="goPage(1)">
+          «
+        </button>
+        <button
+          class="page-btn"
+          :disabled="page <= 1"
+          @click="goPage(page - 1)"
+        >
+          ‹
+        </button>
+        <template x-for="p in pagesArray()" :key="p">
+          <button
+            class="page-btn"
+            :class="p === page ? 'page-btn-active' : (p === '...' ? 'page-btn-ellipsis' : '')"
+            :disabled="p === '...'"
+            @click="p !== '...' && goPage(p)"
+            x-text="p"
+          ></button>
+        </template>
+        <button
+          class="page-btn"
+          :disabled="page >= totalPages"
+          @click="goPage(page + 1)"
+        >
+          ›
+        </button>
+        <button
+          class="page-btn"
+          :disabled="page >= totalPages"
+          @click="goPage(totalPages)"
+        >
+          »
+        </button>
+      </div>
+      <div class="pagination-right">
+        <span>跳至</span>
+        <input
+          type="number"
+          class="page-jump-input"
+          min="1"
+          :max="totalPages"
+          @keyup.enter="jumpPage($event)"
+        />
+        <span>页</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 详情抽屉 -->
+  <div
+    class="drawer-overlay"
+    x-show="drawer"
+    x-transition.opacity
+    @click="drawer = false"
+    x-cloak
+  ></div>
+  <div class="drawer" :class="drawer ? 'drawer-open' : ''" x-cloak>
+    <div class="drawer-header">
+      <div class="drawer-title">统计详情</div>
+      <button class="drawer-close" @click="drawer = false">&times;</button>
+    </div>
+    <div class="drawer-body" x-show="current">
+      <!-- 基本信息 -->
+      <div class="detail-group">
+        <div class="detail-group-title">基本信息</div>
+        <div class="detail-row">
+          <span class="detail-label">ID</span>
+          <span class="detail-value" x-text="current?.id"></span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">描述</span>
+          <span class="detail-value" x-text="current?.description || '-'"></span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">作者</span>
+          <span class="detail-value" x-text="authorNameMap[current?.author_id] || current?.author_id || '-'"></span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">采集日期</span>
+          <span class="detail-value" x-text="current?.collect_date || '-'"></span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">发布日期</span>
+          <span class="detail-value" x-text="current?.publish_date || '-'"></span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">飞书同步</span>
+          <span class="detail-value">
+            <span class="status-tag" :class="current?.feishu_synced ? 'status-active' : 'status-init'" x-text="current?.feishu_synced ? '已同步' : '未同步'"></span>
+          </span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">平均播放时长</span>
+          <span class="detail-value" x-text="current?.avg_play_duration || '-'"></span>
+        </div>
+      </div>
+      <!-- 互动数据 -->
+      <div class="section-title">互动数据</div>
+      <div class="metric-grid">
+        <div class="metric-card">
+          <div class="metric-label">播放</div>
+          <div class="metric-value" x-text="fmtNum(current?.play_count)"></div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">点赞</div>
+          <div class="metric-value" x-text="fmtNum(current?.like_count)"></div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">评论</div>
+          <div class="metric-value" x-text="fmtNum(current?.comment_count)"></div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">分享</div>
+          <div class="metric-value" x-text="fmtNum(current?.share_count)"></div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">关注</div>
+          <div class="metric-value" x-text="fmtNum(current?.follow_count)"></div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">转发</div>
+          <div class="metric-value" x-text="fmtNum(current?.forward_count)"></div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">推荐</div>
+          <div class="metric-value" x-text="fmtNum(current?.recommend_count)"></div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">完播率</div>
+          <div class="metric-value highlight" x-text="fmtRate(current?.completion_rate)"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+</div>
+{{end}} {{define "scripts"}}
+<script>
+  function videoStatsPage() {
+    return {
+      list: [],
+      total: 0,
+      page: 1,
+      pageSize: 20,
+      loading: false,
+      filters: { author_id: '', author_video_id: '', date_from: '', date_to: '', feishu_synced: '' },
+      authors: [],
+      authorNameMap: {},
+      videos: [],
+      videoPage: 1,
+      videoTotal: 0,
+      videoLoading: false,
+      get videoHasMore() { return this.videos.length < this.videoTotal; },
+      drawer: false,
+      current: null,
+
+      get totalPages() {
+        return Math.max(1, Math.ceil(this.total / this.pageSize));
+      },
+
+      async init() {
+        this.initFromURL();
+        await Promise.all([this.load(), this.loadAuthors(), this.loadVideos()]);
+      },
+
+      initFromURL() {
+        const p = new URLSearchParams(window.location.search);
+        this.page = Math.max(1, parseInt(p.get('page')) || 1);
+        if (p.get('page_size'))
+          this.pageSize = parseInt(p.get('page_size')) || 20;
+        if (p.get('author_id')) this.filters.author_id = p.get('author_id');
+        if (p.get('author_video_id')) this.filters.author_video_id = p.get('author_video_id');
+        if (p.get('date_from')) this.filters.date_from = p.get('date_from');
+        if (p.get('date_to')) this.filters.date_to = p.get('date_to');
+        if (p.get('feishu_synced'))
+          this.filters.feishu_synced = p.get('feishu_synced');
+      },
+
+      syncURL() {
+        const p = new URLSearchParams();
+        p.set('page', this.page);
+        p.set('page_size', this.pageSize);
+        Object.entries(this.filters).forEach(([k, v]) => {
+          if (v) p.set(k, v);
+        });
+        history.replaceState(
+          null,
+          '',
+          window.location.pathname + '?' + p.toString(),
+        );
+      },
+
+      async load() {
+        this.loading = true;
+        try {
+          const params = new URLSearchParams({
+            page: this.page,
+            page_size: this.pageSize,
+          });
+          if (this.filters.author_id)
+            params.set('author_id', this.filters.author_id);
+          if (this.filters.author_video_id)
+            params.set('author_video_id', this.filters.author_video_id);
+          if (this.filters.date_from)
+            params.set('date_from', this.filters.date_from);
+          if (this.filters.date_to) params.set('date_to', this.filters.date_to);
+          if (this.filters.feishu_synced)
+            params.set('feishu_synced', this.filters.feishu_synced);
+          const res = await fetch('/video-stats?' + params);
+          const data = await res.json();
+          this.list = data.list || [];
+          this.total = data.total || 0;
+          this.syncURL();
+        } catch (e) {
+          this.showToast('加载失败');
+        } finally {
+          this.loading = false;
+        }
+      },
+
+      async loadAuthors() {
+        try {
+          const res = await fetch('/zhuge/authors?page=1&page_size=200');
+          const data = await res.json();
+          this.authors = data.list || [];
+          this.authorNameMap = {};
+          for (const a of this.authors) {
+            this.authorNameMap[a.id] = a.nickname;
+          }
+        } catch (e) {}
+      },
+
+      async loadVideos(append) {
+        if (this.videoLoading) return;
+        this.videoLoading = true;
+        try {
+          const pg = append ? this.videoPage : 1;
+          let url = `/author-videos?page=${pg}&page_size=20`;
+          if (this.filters.author_id) url += '&author_id=' + this.filters.author_id;
+          const res = await fetch(url);
+          const data = await res.json();
+          const items = data.list || [];
+          if (append) {
+            this.videos = [...this.videos, ...items];
+          } else {
+            this.videos = items;
+            this.videoPage = 1;
+          }
+          this.videoTotal = data.total || 0;
+        } catch (e) {}
+        this.videoLoading = false;
+      },
+
+      onVideoScroll(e) {
+        const el = e.target;
+        if (el.scrollTop + el.clientHeight >= el.scrollHeight - 10 && this.videoHasMore && !this.videoLoading) {
+          this.videoPage++;
+          this.loadVideos(true);
+        }
+      },
+
+      videoLabel() {
+        if (!this.filters.author_video_id) return '全部';
+        const v = this.videos.find(x => String(x.id) === String(this.filters.author_video_id));
+        if (v) return (v.description || '').substring(0, 20) || ('ID:' + v.id);
+        return 'ID:' + this.filters.author_video_id;
+      },
+
+      resetFilters() {
+        this.filters = {
+          author_id: '',
+          author_video_id: '',
+          date_from: '',
+          date_to: '',
+          feishu_synced: '',
+        };
+        this.videos = [];
+        this.videoPage = 1;
+        this.videoTotal = 0;
+        this.page = 1;
+        this.loadVideos();
+        this.load();
+      },
+
+      openView(s) {
+        this.current = s;
+        this.drawer = true;
+      },
+
+      async remove(s) {
+        if (!confirm(`确定删除统计记录 #${s.id}？`)) return;
+        try {
+          const res = await fetch(`/video-stats/${s.id}`, { method: 'DELETE' });
+          if (!res.ok) throw new Error('删除失败');
+          this.showToast('已删除');
+          await this.load();
+        } catch (e) {
+          this.showToast('错误: ' + e.message);
+        }
+      },
+
+      goPage(p) {
+        if (p >= 1 && p <= this.totalPages) {
+          this.page = p;
+          this.load();
+        }
+      },
+      jumpPage(e) {
+        const v = parseInt(e.target.value);
+        if (v >= 1 && v <= this.totalPages) {
+          this.page = v;
+          this.load();
+        }
+        e.target.value = '';
+      },
+
+      pagesArray() { return pageList(this.page, this.totalPages); },
+
+      fmtRate(r) {
+        if (r == null || r === '') return '-';
+        const v = parseFloat(r);
+        if (isNaN(v)) return r;
+        return v >= 1 ? v.toFixed(1) + '%' : (v * 100).toFixed(1) + '%';
+      },
+      showToast(msg) {
+        Alpine.store('toast').show(msg);
+      },
+    };
+  }
+</script>
+{{end}}

@@ -1,0 +1,55 @@
+edition: 3.0.0
+name: f2v-promote-cron-prod
+access: default
+
+resources:
+  f2v-promote-cron-prod:
+    component: fc3
+    actions:
+      pre-deploy:
+        - run: go env -w GOPRIVATE=github.com/AiMarketool
+        - run: go mod tidy
+          path: ../
+        - run: mkdir -p target-cron/check-order && GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o target-cron/check-order/main ./cmd/cron/check-order/
+          path: ../
+    props:
+      region: cn-shanghai
+      handler: main
+      runtime: go1
+      role: "AliyunFcDefaultRole"
+      description: "F2V Promote Cron service (Prod)"
+      timeout: 120
+      diskSize: 512
+      internetAccess: true
+      functionName: f2v-promote-cron-check-order-prod
+      cpu: 1
+      memorySize: 1024
+      code: ../target-cron/check-order
+      environmentVariables: ${json(file("../env/prod.json"))}
+      vpcConfig:
+        securityGroupId: sg-your-security-group-id
+        vpcId: "vpc-your-vpc-id"
+        vSwitchIds:
+          - vsw-your-vswitch-id
+      logConfig:
+        project: "your-log-project"
+        logstore: "function-log"
+        enableRequestMetrics: true
+        enableInstanceMetrics: true
+        logBeginRule: "DefaultRegex"
+      instanceLifecycleConfig:
+        preStop: 
+          handler: preStop 
+          timeout: 60
+        initializer:
+          handler: initialize
+          timeout: 60
+      triggers:
+        - triggerConfig:
+            payload: "poll"
+            cronExpression: "@every 1m"
+            enable: true
+          triggerName: f2v-promote-cron-timer-prod
+          description: "Timer trigger: poll order status every minute (Prod)"
+          qualifier: LATEST
+          triggerType: timer

@@ -1,0 +1,56 @@
+edition: 3.0.0
+name: f2v-promote-prod
+access: default
+
+resources:
+  f2v-promote-api:
+    component: fc3
+    actions:
+      pre-deploy:
+        - run: go env -w GOPRIVATE=github.com/AiMarketool
+        - run: go mod tidy
+          path: ../
+        - run: mkdir -p target && GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o target/server ./cmd/server/
+          path: ../
+    props:
+      region: cn-shanghai
+      role: "AliyunFcDefaultRole"
+      description: "F2V Promote API service (Prod)"
+      timeout: 60
+      diskSize: 512
+      internetAccess: true
+      functionName: f2v-promote-api-prod
+      cpu: 1
+      memorySize: 2048
+      runtime: custom.debian10
+      code: ../target
+      instanceConcurrency: 100
+      environmentVariables: ${json(file("../env/prod.json"))}
+      customRuntimeConfig:
+        port: 9000
+        command:
+          - "./server"
+      vpcConfig:
+        securityGroupId: sg-your-security-group-id
+        vpcId: "vpc-your-vpc-id"
+        vSwitchIds:
+          - vsw-your-vswitch-id
+      logConfig: 
+        project: "your-log-project"
+        logstore: "function-log"
+        enableRequestMetrics: true
+        enableInstanceMetrics: true
+        logBeginRule: "DefaultRegex"
+      triggers:
+        - triggerConfig:
+            authType: anonymous
+            methods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+            disableURLInternet: false
+          triggerName: f2v-promote-http-prod
+          description: "HTTP trigger for f2v-promote API (Prod)"
+          qualifier: LATEST
+          triggerType: http

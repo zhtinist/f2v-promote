@@ -1,0 +1,432 @@
+{{template "base" .}} {{define "page_title"}}视频管理{{end}} {{define
+"content"}}
+<div x-data="videosPage()" x-init="init()">
+  <div class="filter-bar">
+      <div class="form-group">
+        <label>作者</label>
+        <select x-model="filters.author_id" @change="page=1; load()">
+          <option value="">全部</option>
+          <template x-for="a in authors" :key="a.id">
+            <option :value="a.id" x-text="a.nickname"></option>
+          </template>
+        </select>
+      </div>
+      <div class="filter-actions">
+        <button @click="page=1; load()" class="btn btn-primary btn-sm">
+          筛选
+        </button>
+        <button @click="resetFilters()" class="btn-reset">重置</button>
+      </div>
+  </div>
+  <div class="card">
+    <!-- 表格 -->
+    <div class="table-container">
+      <div x-show="loading" class="table-loading-overlay">
+        <span class="spinner"></span>
+      </div>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th class="col-id">ID</th>
+              <th>封面</th>
+              <th class="col-desc">描述</th>
+              <th>作者</th>
+              <th>发布时间</th>
+              <th>创建时间</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="v in list" :key="v.id">
+              <tr>
+                <td class="id-col" x-text="v.id"></td>
+                <td>
+                  <template x-if="v.cover_url">
+                    <img
+                      :src="v.cover_url"
+                      style="
+                        width: 48px;
+                        height: 64px;
+                        object-fit: cover;
+                        border-radius: 4px;
+                        background: #f3f4f6;
+                      "
+                    />
+                  </template>
+                  <template x-if="!v.cover_url">
+                    <div
+                      style="
+                        width: 48px;
+                        height: 64px;
+                        border-radius: 4px;
+                        background: #f3f4f6;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        font-size: 18px;
+                        color: #d1d5db;
+                        font-weight: 700;
+                      "
+                      x-text="(v.description||'V')[0]"
+                    ></div>
+                  </template>
+                </td>
+                <td
+                  style="
+                    max-width: 240px;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                  "
+                  x-text="v.description || '-'"
+                  :title="v.description"
+                ></td>
+                <td x-text="v.author_name || '-'"></td>
+
+                <td x-text="v.publish_time || '-'"></td>
+                <td x-text="fmtDate(v.created_at)"></td>
+                <td>
+                  <button @click="openView(v)" class="btn btn-outline btn-xs">
+                    详情
+                  </button>
+                  <button @click="openStats(v)" class="btn btn-outline btn-xs">
+                    统计
+                  </button>
+                </td>
+              </tr>
+            </template>
+            <template x-if="list.length === 0 && !loading">
+              <tr>
+                <td colspan="7">
+                  <div class="empty-state">
+                    <div class="empty-state-icon">
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.5"
+                      >
+                        <polygon points="23 7 16 12 23 17 23 7" />
+                        <rect
+                          x="1"
+                          y="5"
+                          width="15"
+                          height="14"
+                          rx="2"
+                          ry="2"
+                        />
+                      </svg>
+                    </div>
+                    <div class="empty-state-title">暂无视频数据</div>
+                    <div class="empty-state-desc">
+                      视频数据由定时任务自动采集，请稍后刷新
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <!-- 分页器 -->
+    <div class="pagination" x-show="total > 0">
+      <div class="pagination-left">
+        <span x-text="`共 ${fmtNum(total)} 条`"></span>
+        <select
+          class="page-size-select"
+          x-model.number="pageSize"
+          @change="page=1; load()"
+        >
+          <option value="20">20 条/页</option>
+          <option value="50">50 条/页</option>
+          <option value="100">100 条/页</option>
+        </select>
+      </div>
+      <div class="pagination-center">
+        <button class="page-btn" :disabled="page <= 1" @click="goPage(1)">
+          «
+        </button>
+        <button
+          class="page-btn"
+          :disabled="page <= 1"
+          @click="goPage(page - 1)"
+        >
+          ‹
+        </button>
+        <template x-for="p in pagesArray()" :key="p">
+          <button
+            class="page-btn"
+            :class="p === page ? 'page-btn-active' : (p === '...' ? 'page-btn-ellipsis' : '')"
+            :disabled="p === '...'"
+            @click="p !== '...' && goPage(p)"
+            x-text="p"
+          ></button>
+        </template>
+        <button
+          class="page-btn"
+          :disabled="page >= totalPages"
+          @click="goPage(page + 1)"
+        >
+          ›
+        </button>
+        <button
+          class="page-btn"
+          :disabled="page >= totalPages"
+          @click="goPage(totalPages)"
+        >
+          »
+        </button>
+      </div>
+      <div class="pagination-right">
+        <span>跳至</span>
+        <input
+          type="number"
+          class="page-jump-input"
+          min="1"
+          :max="totalPages"
+          @keyup.enter="jumpPage($event)"
+        />
+        <span>页</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 详情抽屉 -->
+  <div
+    class="drawer-overlay"
+    x-show="drawer"
+    x-transition.opacity
+    @click="drawer = false"
+    x-cloak
+  ></div>
+  <div class="drawer" :class="drawer ? 'drawer-open' : ''" x-cloak>
+    <div class="drawer-header">
+      <div
+        class="drawer-title"
+        x-text="drawerMode === 'stats' ? '视频统计' : '视频详情'"
+      ></div>
+      <button class="drawer-close" @click="drawer = false">&times;</button>
+    </div>
+    <div class="drawer-body">
+      <template x-if="drawerMode === 'view' && current">
+        <div>
+          <div class="video-info" x-show="current.cover_url">
+            <img :src="current.cover_url" class="video-cover" />
+            <div class="video-meta">
+              <div class="video-desc" x-text="current.description"></div>
+              <div class="video-sub">
+                <span x-text="'作者: ' + (current.author_name || '-')"></span>
+                <span x-text="'发布: ' + (current.publish_time || '-')"></span>
+              </div>
+            </div>
+          </div>
+          <div class="detail-group">
+            <div class="detail-group-title">基本信息</div>
+            <div class="detail-row">
+              <span class="detail-label">ID</span
+              ><span class="detail-value" x-text="current.id"></span>
+            </div>
+
+            <div class="detail-row">
+              <span class="detail-label">创建时间</span
+              ><span
+                class="detail-value"
+                x-text="fmtDate(current.created_at)"
+              ></span>
+            </div>
+          </div>
+        </div>
+      </template>
+      <template x-if="drawerMode === 'stats'">
+        <div>
+          <div x-show="statsLoading" class="drawer-loading">
+            <span class="spinner"></span> 加载中...
+          </div>
+          <div
+            x-show="!statsLoading && statsList.length === 0"
+            class="empty-state"
+          >
+            <div class="empty-state-icon">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+              >
+                <path d="M12 20V10" />
+                <path d="M18 20V4" />
+                <path d="M6 20v-4" />
+              </svg>
+            </div>
+            <div class="empty-state-title">暂无统计数据</div>
+          </div>
+          <table
+            x-show="!statsLoading && statsList.length > 0"
+            class="data-table"
+          >
+            <thead>
+              <tr>
+                <th>采集日期</th>
+                <th class="num">播放</th>
+                <th class="num">点赞</th>
+                <th class="num">评论</th>
+                <th class="num">分享</th>
+                <th class="num">关注</th>
+                <th>完播率</th>
+                <th>飞书</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="s in statsList" :key="s.id">
+                <tr>
+                  <td x-text="s.collect_date"></td>
+                  <td class="num" x-text="fmtNum(s.play_count)"></td>
+                  <td class="num" x-text="fmtNum(s.like_count)"></td>
+                  <td class="num" x-text="fmtNum(s.comment_count)"></td>
+                  <td class="num" x-text="fmtNum(s.share_count)"></td>
+                  <td class="num" x-text="fmtNum(s.follow_count)"></td>
+                  <td x-text="s.completion_rate ? (parseFloat(s.completion_rate) >= 1 ? parseFloat(s.completion_rate).toFixed(1)+'%' : (parseFloat(s.completion_rate)*100).toFixed(1)+'%') : '-'"></td>
+                  <td>
+                    <span class="status-tag" :class="s.feishu_synced ? 'status-active' : 'status-init'" x-text="s.feishu_synced ? '已同步' : '未同步'" style="font-size:11px;"></span>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </template>
+    </div>
+  </div>
+
+
+</div>
+{{end}} {{define "scripts"}}
+<script>
+  function videosPage() {
+    return {
+      list: [],
+      total: 0,
+      page: 1,
+      pageSize: 20,
+      loading: false,
+      filters: { author_id: '' },
+      authors: [],
+      drawer: false,
+      drawerMode: 'view',
+      current: null,
+      statsList: [],
+      statsLoading: false,
+
+      get totalPages() {
+        return Math.max(1, Math.ceil(this.total / this.pageSize));
+      },
+
+      async init() {
+        this.initFromURL();
+        await Promise.all([this.load(), this.loadAuthors()]);
+      },
+
+      initFromURL() {
+        const p = new URLSearchParams(window.location.search);
+        this.page = Math.max(1, parseInt(p.get('page')) || 1);
+        if (p.get('page_size'))
+          this.pageSize = parseInt(p.get('page_size')) || 20;
+        if (p.get('author_id')) this.filters.author_id = p.get('author_id');
+      },
+
+      syncURL() {
+        const p = new URLSearchParams();
+        p.set('page', this.page);
+        p.set('page_size', this.pageSize);
+        if (this.filters.author_id) p.set('author_id', this.filters.author_id);
+        history.replaceState(
+          null,
+          '',
+          window.location.pathname + '?' + p.toString(),
+        );
+      },
+
+      async load() {
+        this.loading = true;
+        try {
+          const params = new URLSearchParams({
+            page: this.page,
+            page_size: this.pageSize,
+          });
+          if (this.filters.author_id)
+            params.set('author_id', this.filters.author_id);
+          const res = await fetch('/author-videos?' + params);
+          const data = await res.json();
+          this.list = data.list || [];
+          this.total = data.total || 0;
+          this.syncURL();
+        } catch (e) {
+          this.showToast('加载失败');
+        } finally {
+          this.loading = false;
+        }
+      },
+
+      async loadAuthors() {
+        try {
+          const res = await fetch('/zhuge/authors?page=1&page_size=200');
+          const data = await res.json();
+          this.authors = data.list || [];
+        } catch (e) {}
+      },
+
+      resetFilters() {
+        this.filters = { author_id: '' };
+        this.page = 1;
+        this.load();
+      },
+
+      goPage(p) {
+        if (p >= 1 && p <= this.totalPages) {
+          this.page = p;
+          this.load();
+        }
+      },
+      jumpPage(e) {
+        const v = parseInt(e.target.value);
+        if (v >= 1 && v <= this.totalPages) {
+          this.page = v;
+          this.load();
+        }
+        e.target.value = '';
+      },
+
+      pagesArray() { return pageList(this.page, this.totalPages); },
+
+      openView(v) {
+        this.current = v;
+        this.drawerMode = 'view';
+        this.drawer = true;
+      },
+
+      async openStats(v) {
+        this.current = v;
+        this.drawerMode = 'stats';
+        this.drawer = true;
+        this.statsLoading = true;
+        this.statsList = [];
+        try {
+          const res = await fetch(`/author-videos/${v.id}/stats`);
+          const data = await res.json();
+          this.statsList = data.stats || [];
+        } catch (e) {
+          this.showToast('加载统计失败');
+        } finally {
+          this.statsLoading = false;
+        }
+      },
+
+      showToast(msg) {
+        Alpine.store('toast').show(msg);
+      },
+    };
+  }
+</script>
+{{end}}

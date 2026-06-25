@@ -1,0 +1,143 @@
+{{define "base"}}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{block "title" .}}投放管理系统{{end}}</title>
+  <link rel="preconnect" href="https://fonts.loli.net" crossorigin>
+  <link href="https://fonts.loli.net/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script defer src="/static/js/alpine.min.js"></script>
+  <script defer src="/static/js/utils.js?v=20260417d"></script>
+  <link rel="stylesheet" href="/static/css/base.css?v=20260417f">
+  <link rel="stylesheet" href="/static/css/dashboard.css?v=20260417f">
+  <link rel="stylesheet" href="/static/css/auth.css?v=20260417f">
+  <link rel="stylesheet" href="/static/css/detail.css?v=20260417f">
+  <link rel="stylesheet" href="/static/css/create.css?v=20260417f">
+  {{block "head" .}}{{end}}
+</head>
+<body>
+  {{if .User}}
+  <div class="layout">
+    <!-- 侧边栏 -->
+    <aside class="sidebar" x-data="{ open: '{{.ActiveGroup}}' }" x-cloak>
+      <div class="sidebar-header">
+        <div class="sidebar-logo">投放管理系统</div>
+      </div>
+      <nav class="sidebar-nav">
+
+        <!-- 📊 面板管理 -->
+        <div class="nav-group">
+          <a href="/" class="nav-group-title {{if eq .ActiveGroup "dashboard"}}group-active{{end}}">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            <span>面板管理</span>
+          </a>
+        </div>
+
+        <!-- 🖥️ 平台管理 -->
+        <div class="nav-group">
+          <div class="nav-group-title {{if eq .ActiveGroup "platform"}}group-active{{end}}" @click="open = open === 'platform' ? '' : 'platform'">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            <span>平台管理</span>
+            <svg class="nav-chevron" :class="open === 'platform' ? 'chevron-open' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          <div class="nav-group-items" x-show="open === 'platform'" x-transition.duration.200ms>
+            <a href="/accounts-page" class="nav-sub-item {{if eq .ActivePage "accounts"}}active{{end}}">账号管理</a>
+          </div>
+        </div>
+
+        <!-- 👥 作者管理 -->
+        <div class="nav-group">
+          <div class="nav-group-title {{if eq .ActiveGroup "author"}}group-active{{end}}" @click="open = open === 'author' ? '' : 'author'">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+            <span>作者管理</span>
+            <svg class="nav-chevron" :class="open === 'author' ? 'chevron-open' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          <div class="nav-group-items" x-show="open === 'author'" x-transition.duration.200ms>
+            <a href="/authors-page" class="nav-sub-item {{if eq .ActivePage "authors"}}active{{end}}">作者管理</a>
+            <a href="/videos-page" class="nav-sub-item {{if eq .ActivePage "videos"}}active{{end}}">视频管理</a>
+            <a href="/strategies-page" class="nav-sub-item {{if eq .ActivePage "strategies"}}active{{end}}">投放策略</a>
+            <a href="/video-stats-page" class="nav-sub-item {{if eq .ActivePage "video-stats"}}active{{end}}">视频统计</a>
+          </div>
+        </div>
+
+        <!-- 🚀 投放管理 -->
+        <div class="nav-group">
+          <div class="nav-group-title {{if eq .ActiveGroup "promote"}}group-active{{end}}" @click="open = open === 'promote' ? '' : 'promote'">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+            <span>投放管理</span>
+            <svg class="nav-chevron" :class="open === 'promote' ? 'chevron-open' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          <div class="nav-group-items" x-show="open === 'promote'" x-transition.duration.200ms>
+            <a href="/create" class="nav-sub-item {{if eq .ActivePage "create"}}active{{end}}">创建投放</a>
+            <a href="/campaigns-page" class="nav-sub-item {{if eq .ActivePage "campaigns"}}active{{end}}">活动管理</a>
+            <a href="/orders-page" class="nav-sub-item {{if eq .ActivePage "orders"}}active{{end}}">订单管理</a>
+            <a href="/promote-logs-page" class="nav-sub-item {{if eq .ActivePage "promote-logs"}}active{{end}}">投放日志</a>
+          </div>
+        </div>
+
+        <!-- 🏷️ 标签管理 -->
+        <div class="nav-group">
+          <div class="nav-group-title {{if eq .ActiveGroup "tags"}}group-active{{end}}" @click="open = open === 'tags' ? '' : 'tags'">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+            <span>标签管理</span>
+            <svg class="nav-chevron" :class="open === 'tags' ? 'chevron-open' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          <div class="nav-group-items" x-show="open === 'tags'" x-transition.duration.200ms>
+            <a href="/tags-page" class="nav-sub-item {{if eq .ActivePage "tags"}}active{{end}}">标签管理</a>
+          </div>
+        </div>
+
+        <!-- ⚙️ 其他设置 -->
+        <div class="nav-group">
+          <div class="nav-group-title {{if eq .ActiveGroup "settings"}}group-active{{end}}" @click="open = open === 'settings' ? '' : 'settings'">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+            <span>其他设置</span>
+            <svg class="nav-chevron" :class="open === 'settings' ? 'chevron-open' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          <div class="nav-group-items" x-show="open === 'settings'" x-transition.duration.200ms>
+            <a href="/prompts-page" class="nav-sub-item {{if eq .ActivePage "prompts"}}active{{end}}">提示词设置</a>
+          </div>
+        </div>
+
+      </nav>
+      <div class="sidebar-footer">
+        <div class="sidebar-user">
+          <div class="user-avatar">{{upper (firstChar .User.Username)}}</div>
+          <div class="user-info">
+            <div class="user-name">{{.User.Username}}</div>
+            <div class="user-role">操作员</div>
+          </div>
+        </div>
+        <a href="/logout" class="sidebar-logout" title="退出登录">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        </a>
+      </div>
+    </aside>
+
+    <!-- 主内容区 -->
+    <div class="main-wrapper">
+      <header class="topbar">
+        <h1 class="page-title">{{block "page_title" .}}工作台{{end}}</h1>
+        <div class="topbar-right">
+          {{block "topbar_actions" .}}{{end}}
+        </div>
+      </header>
+      <main class="main-content">
+        {{block "content" .}}{{end}}
+      </main>
+    </div>
+  </div>
+  <!-- 全局 Toast -->
+  <div class="toast" x-data x-show="$store.toast.msg" x-text="$store.toast.msg" x-transition x-cloak></div>
+  {{else}}
+  <!-- 未登录：无侧边栏 -->
+  <main class="auth-page">
+    {{block "content_noauth" .}}{{end}}
+  </main>
+  {{end}}
+
+  {{block "scripts" .}}{{end}}
+</body>
+</html>
+{{end}}

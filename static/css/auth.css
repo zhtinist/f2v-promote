@@ -1,0 +1,22 @@
+/* ══════════════════════════════════════════
+   Auth Page
+   ══════════════════════════════════════════ */
+.auth-page {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, #ECF2FF 0%, #F2F6FA 50%, #E6FFFA 100%);
+}
+.auth-container {
+  width: 100%; max-width: 420px; background: #fff;
+  padding: 40px 36px; border-radius: var(--radius);
+  box-shadow: 0 8px 40px rgba(0,0,0,0.1);
+}
+.auth-logo {
+  font-size: 26px; font-weight: 700; text-align: center;
+  color: var(--primary); margin-bottom: 4px;
+}
+.auth-subtitle { text-align: center; color: var(--text-muted); margin-bottom: 28px; font-size: 14px; }
+.auth-form { margin-bottom: 12px; }
+.auth-switch { text-align: center; font-size: 13px; color: var(--text-muted); margin-top: 16px; }
+.auth-switch a { color: var(--primary); text-decoration: none; font-weight: 500; }
+.auth-switch a:hover { text-decoration: underline; }
+

@@ -1,0 +1,960 @@
+{{template "base" .}} {{define "page_title"}}投放日志{{end}} {{define
+"content"}}
+<style>
+  .detail-section {
+    background: #f9fafb;
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-bottom: 16px;
+  }
+  .detail-section-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .detail-section-title svg {
+    width: 16px;
+    height: 16px;
+    color: #6366f1;
+  }
+  .detail-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px 28px;
+  }
+  .detail-item .dl {
+    font-size: 12px;
+    color: #9ca3af;
+    margin-bottom: 2px;
+  }
+  .detail-item .dv {
+    font-size: 14px;
+    color: #1f2937;
+    font-weight: 500;
+  }
+  .detail-item .dv.mono {
+    font-family: monospace;
+    font-size: 12px;
+    word-break: break-all;
+    color: #6b7280;
+  }
+  .detail-item.full {
+    grid-column: 1 / -1;
+  }
+  .metric-row {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .metric-card {
+    flex: 1;
+    min-width: 80px;
+    text-align: center;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 10px 8px;
+  }
+  .metric-card .mv {
+    font-size: 18px;
+    font-weight: 700;
+    color: #1f2937;
+  }
+  .metric-card .ml {
+    font-size: 11px;
+    color: #9ca3af;
+    margin-top: 2px;
+  }
+  .timeline {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin-top: 4px;
+    flex-wrap: wrap;
+  }
+  .timeline-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: #6b7280;
+  }
+  .timeline-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #d1d5db;
+    flex-shrink: 0;
+  }
+  .timeline-dot.active {
+    background: #10b981;
+  }
+  .timeline-dot.fail {
+    background: #ef4444;
+  }
+  .timeline-line {
+    width: 24px;
+    height: 2px;
+    background: #e5e7eb;
+  }
+  .error-box {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    color: #dc2626;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    word-break: break-all;
+    line-height: 1.5;
+  }
+  .video-desc-box {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: #374151;
+    word-break: break-all;
+    max-height: 120px;
+    overflow-y: auto;
+  }
+</style>
+
+<div x-data="promoteLogsPage()" x-init="init()">
+  <!-- 筛选栏 -->
+  <div class="filter-bar">
+    <div class="form-group filter-select">
+      <label>作者</label>
+      <select x-model="filter.author_id" @change="search()">
+        <option value="">全部作者</option>
+        <template x-for="a in authors" :key="a.id">
+          <option :value="a.id" x-text="a.nickname || a.username"></option>
+        </template>
+      </select>
+    </div>
+    <div class="form-group filter-select">
+      <label>状态</label>
+      <select x-model="filter.status">
+        <option value="">全部状态</option>
+        <option value="detected">待审核</option>
+        <option value="confirmed">已确认</option>
+        <option value="rejected">已拒绝</option>
+        <option value="queued">排队中</option>
+        <option value="running">执行中</option>
+        <option value="completed">已完成</option>
+        <option value="failed">失败</option>
+        <option value="init">初始化</option>
+        <option value="pending">待支付</option>
+        <option value="review">审核中</option>
+        <option value="active">加热中</option>
+        <option value="closed">已关闭</option>
+      </select>
+    </div>
+    <div class="form-group filter-id">
+      <label>日志ID</label>
+      <input type="number" x-model.number="filter.id" placeholder="精确搜索" />
+    </div>
+    <div class="form-group">
+      <label>开始日期</label>
+      <input type="date" x-model="filter.start_date" />
+    </div>
+    <div class="form-group">
+      <label>结束日期</label>
+      <input type="date" x-model="filter.end_date" />
+    </div>
+    <div class="form-group filter-keyword">
+      <label>视频描述</label>
+      <input
+        type="text"
+        x-model="filter.video_keyword"
+        placeholder="搜索视频描述..."
+        @keyup.enter="search()"
+      />
+    </div>
+    <div class="filter-actions">
+      <button @click="search()" class="btn btn-primary btn-sm">筛选</button>
+      <button @click="resetFilter()" class="btn-reset">重置</button>
+    </div>
+  </div>
+  <!-- 日志列表 -->
+  <div class="card">
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>作者</th>
+            <th>视频</th>
+            <th>平台</th>
+            <th>类型</th>
+            <th>小时播放</th>
+            <th>点赞率</th>
+            <th>转发率</th>
+            <th>状态</th>
+            <th>活动ID</th>
+            <th>订单ID</th>
+            <th>时间</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="l in logs" :key="l.id">
+            <tr>
+              <td class="text-muted text-sm" x-text="l.id"></td>
+              <td x-text="l.author_name || '-'"></td>
+              <td class="col-desc">
+                <div
+                  class="text-truncate text-sm"
+                  x-text="l.video_description || '-'"
+                  :title="l.video_description"
+                ></div>
+              </td>
+              <td x-text="platformName(l.platform) || '-'"></td>
+              <td>
+                <span
+                  class="badge"
+                  :class="l.promote_type==='like_rate' ? 'badge-info' : 'badge-primary'"
+                  x-text="l.promote_type==='like_rate' ? '推荐' : '关注'"
+                ></span>
+              </td>
+              <td
+                class="stat-row-value"
+                x-text="l.hourly_play_count || '-'"
+              ></td>
+              <td x-text="l.like_rate ? l.like_rate+'%' : '-'"></td>
+              <td x-text="l.share_rate ? l.share_rate+'%' : '-'"></td>
+              <td>
+                <span
+                  class="badge"
+                  :class="{
+                        'badge-warning': l.status==='detected',
+                        'badge-info': l.status==='confirmed' || l.status==='queued' || l.status==='running' || l.status==='review' || l.status==='pending',
+                        'badge-success': l.status==='completed' || l.status==='active',
+                        'badge-danger': l.status==='failed' || l.status==='rejected' || l.status==='closed'
+                      }"
+                  x-text="statusName(l.status)"
+                ></span>
+              </td>
+              <td class="text-muted text-sm" x-text="l.campaign_id || '-'"></td>
+              <td class="text-muted text-sm" x-text="l.order_id || '-'"></td>
+              <td
+                class="text-muted text-sm"
+                x-text="fmtDate(l.created_at)"
+              ></td>
+              <td>
+                <button @click="showDetail(l)" class="btn btn-outline btn-xs">
+                  详情
+                </button>
+                <button
+                  @click="openEditStatus(l)"
+                  class="btn btn-outline btn-xs ml-1"
+                >
+                  编辑
+                </button>
+              </td>
+            </tr>
+          </template>
+          <tr x-show="logs.length === 0">
+            <td colspan="13" class="empty-row">暂无投放记录</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <!-- 分页 -->
+    <div class="pagination" x-show="total > 0">
+      <div class="pagination-left">
+        <span x-text="`共 ${total} 条`"></span>
+        <select
+          class="page-size-select"
+          x-model.number="pageSize"
+          @change="search()"
+        >
+          <option value="20">20 条/页</option>
+          <option value="50">50 条/页</option>
+          <option value="100">100 条/页</option>
+        </select>
+      </div>
+      <div class="pagination-center">
+        <button class="page-btn" :disabled="page <= 1" @click="goPage(1)">
+          «
+        </button>
+        <button
+          class="page-btn"
+          :disabled="page <= 1"
+          @click="goPage(page - 1)"
+        >
+          ‹
+        </button>
+        <template x-for="p in pagesArray()" :key="p">
+          <button
+            class="page-btn"
+            :class="p === page ? 'page-btn-active' : (p === '...' ? 'page-btn-ellipsis' : '')"
+            :disabled="p === '...'"
+            @click="p !== '...' && goPage(p)"
+            x-text="p"
+          ></button>
+        </template>
+        <button
+          class="page-btn"
+          :disabled="page >= totalPages"
+          @click="goPage(page + 1)"
+        >
+          ›
+        </button>
+        <button
+          class="page-btn"
+          :disabled="page >= totalPages"
+          @click="goPage(totalPages)"
+        >
+          »
+        </button>
+      </div>
+      <div class="pagination-right">
+        <span>跳至</span>
+        <input
+          type="number"
+          class="page-jump-input"
+          min="1"
+          :max="totalPages"
+          @keyup.enter="jumpPage($event)"
+        />
+        <span>页</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 详情 Drawer -->
+  <div
+    class="drawer-overlay"
+    x-show="drawerOpen"
+    x-transition.opacity
+    @click="drawerOpen = false"
+    x-cloak
+  ></div>
+  <div
+    class="drawer"
+    :class="drawerOpen ? 'drawer-open' : ''"
+    x-cloak
+    class="drawer drawer-sm"
+  >
+    <div class="drawer-header">
+      <div class="drawer-title">
+        日志 #<span x-text="detail.id"></span>
+        <span
+          class="badge ml-2"
+          :class="{
+          'badge-warning': detail.status==='detected',
+          'badge-info': detail.status==='confirmed' || detail.status==='queued' || detail.status==='running' || detail.status==='review' || detail.status==='pending',
+          'badge-success': detail.status==='completed' || detail.status==='active',
+          'badge-danger': detail.status==='failed' || detail.status==='rejected' || detail.status==='closed'
+        }"
+          x-text="statusName(detail.status)"
+        ></span>
+      </div>
+      <button class="drawer-close" @click="drawerOpen = false">&times;</button>
+    </div>
+    <div class="drawer-body" x-show="detail.id">
+      <!-- 基本信息 -->
+      <div class="detail-section">
+        <div class="detail-section-title">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
+            <circle cx="12" cy="7" r="4" />
+          </svg>
+          基本信息
+        </div>
+        <div class="detail-grid">
+          <div class="detail-item">
+            <div class="dl">作者</div>
+            <div
+              class="dv"
+              x-text="detail.author_name || ('ID:' + detail.author_id)"
+            ></div>
+          </div>
+          <div class="detail-item">
+            <div class="dl">平台</div>
+            <div class="dv" x-text="platformName(detail.platform)"></div>
+          </div>
+          <div class="detail-item">
+            <div class="dl">投放类型</div>
+            <div class="dv">
+              <span
+                class="badge"
+                :class="detail.promote_type==='like_rate' ? 'badge-info' : 'badge-primary'"
+                x-text="detail.promote_type === 'like_rate' ? '推荐（点赞率）' : '关注（转发率）'"
+              ></span>
+            </div>
+          </div>
+          <div class="detail-item">
+            <div class="dl">策略ID</div>
+            <div class="dv" x-text="detail.strategy_id"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 视频信息 -->
+      <div class="detail-section">
+        <div class="detail-section-title">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <polygon points="23 7 16 12 23 17 23 7" />
+            <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+          </svg>
+          视频信息
+        </div>
+        <div class="detail-grid">
+          <div class="detail-item full">
+            <div class="dl">视频描述</div>
+            <div
+              class="video-desc-box"
+              x-text="detail.video_description || '-'"
+            ></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 数据指标 -->
+      <div class="detail-section">
+        <div class="detail-section-title">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M12 20V10" />
+            <path d="M18 20V4" />
+            <path d="M6 20v-4" />
+          </svg>
+          数据指标
+        </div>
+        <div class="metric-row">
+          <div class="metric-card">
+            <div class="mv" x-text="detail.hourly_play_count || '-'"></div>
+            <div class="ml">小时播放</div>
+          </div>
+          <div class="metric-card">
+            <div
+              class="mv"
+              x-text="detail.like_rate ? detail.like_rate + '%' : '-'"
+            ></div>
+            <div class="ml">点赞率</div>
+          </div>
+          <div class="metric-card">
+            <div
+              class="mv"
+              x-text="detail.share_rate ? detail.share_rate + '%' : '-'"
+            ></div>
+            <div class="ml">转发率</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 统计数据对比 -->
+      <div class="detail-section" x-show="statCurrent">
+        <div class="detail-section-title">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <rect x="3" y="3" width="7" height="7" />
+            <rect x="14" y="3" width="7" height="7" />
+            <rect x="14" y="14" width="7" height="7" />
+            <rect x="3" y="14" width="7" height="7" />
+          </svg>
+          <span>📊 数据对比</span>
+          <span
+            class="stat-subtitle"
+            x-text="statPrevious ? '(' + (statPrevious.collect_date||'') + ' → ' + (statCurrent.collect_date||'') + ')' : statCurrent.collect_date"
+          ></span>
+        </div>
+        <div class="stat-row-list">
+          <template x-for="m in statMetrics" :key="m.key">
+            <div class="stat-row">
+              <span class="stat-row-icon" x-text="m.icon"></span>
+              <span class="stat-row-label" x-text="m.label"></span>
+              <span
+                class="text-muted"
+                x-text="statPrevious ? statPrevious[m.key] : '-'"
+              ></span>
+              <span class="text-muted">→</span>
+              <span class="stat-row-value" x-text="statCurrent[m.key]"></span>
+              <span
+                class="stat-row-diff"
+                :style="m.diff > 0 ? 'color:#10b981' : (m.diff < 0 ? 'color:#ef4444' : 'color:#9ca3af')"
+                x-text="m.diff > 0 ? '(🔺+' + m.diff + ')' : (m.diff === 0 ? '(-)' : '(🔻' + m.diff + ')')"
+              ></span>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <!-- 投放关联 -->
+      <div class="detail-section">
+        <div class="detail-section-title">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path
+              d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"
+            />
+            <path
+              d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"
+            />
+          </svg>
+          投放关联
+        </div>
+        <div class="detail-grid">
+          <div class="detail-item">
+            <div class="dl">活动 ID</div>
+            <div class="dv" x-text="detail.campaign_id || '-'"></div>
+          </div>
+          <div class="detail-item">
+            <div class="dl">订单 ID</div>
+            <div class="dv" x-text="detail.order_id || '-'"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 时间线 -->
+      <div class="detail-section">
+        <div class="detail-section-title">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <circle cx="12" cy="12" r="10" />
+            <polyline points="12 6 12 12 16 14" />
+          </svg>
+          执行时间线
+        </div>
+        <div class="timeline">
+          <div class="timeline-item">
+            <div class="timeline-dot active"></div>
+            <div>
+              <div class="timeline-step-label">创建</div>
+              <div
+                class="timeline-step-time"
+                x-text="fmtDateFull(detail.created_at)"
+              ></div>
+            </div>
+          </div>
+          <div class="timeline-line"></div>
+          <div class="timeline-item">
+            <div
+              class="timeline-dot"
+              :class="detail.confirmed_at ? 'active' : ''"
+            ></div>
+            <div>
+              <div class="timeline-step-label">确认</div>
+              <div
+                class="timeline-step-time"
+                x-text="fmtDateFull(detail.confirmed_at)"
+              ></div>
+            </div>
+          </div>
+          <div class="timeline-line"></div>
+          <div class="timeline-item">
+            <div
+              class="timeline-dot"
+              :class="detail.queued_at ? 'active' : ''"
+            ></div>
+            <div>
+              <div class="timeline-step-label">排队</div>
+              <div
+                class="timeline-step-time"
+                x-text="fmtDateFull(detail.queued_at)"
+              ></div>
+            </div>
+          </div>
+          <div class="timeline-line"></div>
+          <div class="timeline-item">
+            <div
+              class="timeline-dot"
+              :class="detail.status==='completed' ? 'active' : (detail.status==='failed' ? 'fail' : '')"
+            ></div>
+            <div>
+              <div
+                class="timeline-step-label"
+                x-text="detail.status==='failed' ? '失败' : '完成'"
+              ></div>
+              <div
+                class="timeline-step-time"
+                x-text="detail.status==='completed' || detail.status==='failed' ? fmtDateFull(detail.updated_at) : '-'"
+              ></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 错误信息 -->
+      <template x-if="detail.error_msg">
+        <div class="detail-section detail-section-error">
+          <div class="detail-section-title">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <line x1="15" y1="9" x2="9" y2="15" />
+              <line x1="9" y1="9" x2="15" y2="15" />
+            </svg>
+            错误信息
+          </div>
+          <div class="error-box" x-text="detail.error_msg"></div>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- 编辑状态 Drawer -->
+  <div
+    class="drawer-overlay"
+    x-show="editStatusOpen"
+    x-transition.opacity
+    @click="editStatusOpen = false"
+    x-cloak
+  ></div>
+  <div
+    class="drawer"
+    :class="editStatusOpen ? 'drawer-open' : ''"
+    x-cloak
+    class="drawer drawer-sm"
+  >
+    <div class="drawer-header">
+      <div class="drawer-title">
+        编辑状态 #<span x-text="editLog?.id || ''"></span>
+      </div>
+      <button class="drawer-close" @click="editStatusOpen = false">
+        &times;
+      </button>
+    </div>
+    <div class="drawer-body">
+      <!-- 基本信息 -->
+      <div class="detail-section">
+        <div class="detail-section-title">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path
+              d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"
+            />
+            <polyline points="14 2 14 8 20 8" />
+          </svg>
+          日志信息
+        </div>
+        <div class="detail-grid">
+          <div class="detail-item">
+            <div class="dl">作者</div>
+            <div class="dv" x-text="editLog?.author_name || '-'"></div>
+          </div>
+          <div class="detail-item">
+            <div class="dl">类型</div>
+            <div class="dv">
+              <span
+                class="badge"
+                :class="editLog?.promote_type==='like_rate' ? 'badge-info' : 'badge-primary'"
+                x-text="editLog?.promote_type==='like_rate' ? '推荐' : '关注'"
+              ></span>
+            </div>
+          </div>
+          <div class="detail-item">
+            <div class="dl">小时播放</div>
+            <div
+              class="dv stat-row-value"
+              x-text="editLog?.hourly_play_count || '-'"
+            ></div>
+          </div>
+          <div class="detail-item">
+            <div class="dl">点赞率</div>
+            <div
+              class="dv"
+              x-text="editLog?.like_rate ? editLog.like_rate+'%' : '-'"
+            ></div>
+          </div>
+          <div class="detail-item full">
+            <div class="dl">视频描述</div>
+            <div
+              class="dv"
+              class="dv text-sm text-muted"
+              style="max-height: 60px; overflow-y: auto"
+              x-text="editLog?.video_description || '-'"
+            ></div>
+          </div>
+          <div class="detail-item full">
+            <div class="dl">创建时间</div>
+            <div class="dv mono" x-text="fmtDate(editLog?.created_at)"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 状态修改 -->
+      <div class="detail-section">
+        <div class="detail-section-title">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path
+              d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"
+            />
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+          </svg>
+          修改状态
+        </div>
+        <select x-model="editNewStatus" class="form-input">
+          <option value="detected">待审核</option>
+          <option value="confirmed">已确认</option>
+        </select>
+      </div>
+
+      <div class="btn-group-lg" style="justify-content: flex-end">
+        <button @click="editStatusOpen = false" class="btn btn-outline btn-sm">
+          取消
+        </button>
+        <button
+          @click="submitEditStatus()"
+          class="btn btn-primary btn-sm"
+          :disabled="editStatusSaving"
+        >
+          <span
+            x-show="editStatusSaving"
+            class="spinner"
+            class="spinner mr-1"
+          ></span>
+          保存
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{{end}} {{define "scripts"}}
+<script>
+  function promoteLogsPage() {
+    return {
+      logs: [],
+      authors: [],
+      total: 0,
+      page: 1,
+      pageSize: 20,
+      filter: {
+        author_id: '',
+        video_keyword: '',
+        status: '',
+        id: null,
+        start_date: '',
+        end_date: '',
+      },
+      drawerOpen: false,
+      detail: {},
+      statCurrent: null,
+      statPrevious: null,
+      statMetrics: [],
+      editStatusOpen: false,
+      editLog: null,
+      editNewStatus: '',
+      editStatusSaving: false,
+
+      get totalPages() {
+        return Math.max(1, Math.ceil(this.total / this.pageSize));
+      },
+
+      async init() {
+        this.initFromURL();
+        await this.loadAuthors();
+        await this.loadLogs();
+      },
+
+      initFromURL() {
+        const p = new URLSearchParams(window.location.search);
+        this.page = Math.max(1, parseInt(p.get('page')) || 1);
+        if (p.get('page_size'))
+          this.pageSize = parseInt(p.get('page_size')) || 20;
+        if (p.get('author_id')) this.filter.author_id = p.get('author_id');
+        if (p.get('video_keyword'))
+          this.filter.video_keyword = p.get('video_keyword');
+        if (p.get('status')) this.filter.status = p.get('status');
+      },
+
+      syncURL() {
+        const p = new URLSearchParams();
+        p.set('page', this.page);
+        if (this.filter.author_id) p.set('author_id', this.filter.author_id);
+        if (this.filter.video_keyword)
+          p.set('video_keyword', this.filter.video_keyword);
+        if (this.filter.status) p.set('status', this.filter.status);
+        history.replaceState(
+          null,
+          '',
+          window.location.pathname + '?' + p.toString(),
+        );
+      },
+
+      async loadAuthors() {
+        try {
+          const res = await fetch('/zhuge/authors?page=1&page_size=200');
+          const data = await res.json();
+          this.authors = data.list || [];
+        } catch (e) {}
+      },
+
+      async loadLogs() {
+        try {
+          let url = `/promote-logs?page=${this.page}&page_size=${this.pageSize}`;
+          if (this.filter.author_id)
+            url += `&author_id=${this.filter.author_id}`;
+          if (this.filter.video_keyword)
+            url += `&video_keyword=${encodeURIComponent(this.filter.video_keyword)}`;
+          if (this.filter.status) url += `&status=${this.filter.status}`;
+          if (this.filter.id) url += `&id=${this.filter.id}`;
+          if (this.filter.start_date)
+            url += `&start_date=${this.filter.start_date}`;
+          if (this.filter.end_date) url += `&end_date=${this.filter.end_date}`;
+          const res = await fetch(url);
+          const data = await res.json();
+          this.logs = data.logs || [];
+          this.total = data.total || 0;
+          this.syncURL();
+        } catch (e) {}
+      },
+
+      search() {
+        this.page = 1;
+        this.loadLogs();
+      },
+
+      resetFilter() {
+        this.filter = {
+          author_id: '',
+          video_keyword: '',
+          status: '',
+          id: null,
+          start_date: '',
+          end_date: '',
+        };
+        this.search();
+      },
+
+      goPage(p) {
+        if (p >= 1 && p <= this.totalPages) {
+          this.page = p;
+          this.loadLogs();
+        }
+      },
+      pagesArray() {
+        return pageList(this.page, this.totalPages);
+      },
+      jumpPage(e) {
+        const v = parseInt(e.target.value);
+        if (v >= 1 && v <= this.totalPages) {
+          this.page = v;
+          this.loadLogs();
+        }
+        e.target.value = '';
+      },
+
+      async showDetail(l) {
+        this.detail = l;
+        this.statCurrent = null;
+        this.statPrevious = null;
+        this.statMetrics = [];
+        this.drawerOpen = true;
+
+        // 异步加载两条 video_stat
+        const keys = [
+          { key: 'play_count', label: '播放', icon: '🎬' },
+          { key: 'like_count', label: '点赞', icon: '👍' },
+          { key: 'share_count', label: '分享', icon: '🔄' },
+          { key: 'follow_count', label: '关注', icon: '➕' },
+          { key: 'comment_count', label: '评论', icon: '💬' },
+          { key: 'forward_count', label: '转发', icon: '📤' },
+          { key: 'recommend_count', label: '推荐', icon: '⭐' },
+        ];
+        try {
+          const cur = await fetch(`/video-stats/${l.stat_id_current}`).then(
+            (r) => r.json(),
+          );
+          this.statCurrent = cur;
+          let prev = null;
+          if (l.stat_id_previous) {
+            prev = await fetch(`/video-stats/${l.stat_id_previous}`).then((r) =>
+              r.json(),
+            );
+            this.statPrevious = prev;
+          }
+          this.statMetrics = keys.map((k) => ({
+            ...k,
+            diff: prev ? (cur[k.key] || 0) - (prev[k.key] || 0) : 0,
+          }));
+        } catch (e) {}
+      },
+
+      statusName(s) {
+        return statusText(s);
+      },
+
+      showToast(msg) {
+        Alpine.store('toast').show(msg);
+      },
+
+      openEditStatus(l) {
+        this.editLog = l;
+        this.editNewStatus = l.status;
+        this.editStatusOpen = true;
+      },
+
+      async submitEditStatus() {
+        if (!this.editLog || this.editNewStatus === this.editLog.status) {
+          this.editStatusOpen = false;
+          return;
+        }
+        this.editStatusSaving = true;
+        try {
+          const res = await fetch(`/promote-logs/${this.editLog.id}/status`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: this.editNewStatus }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || '更新失败');
+          this.showToast('状态已更新');
+          this.editStatusOpen = false;
+          await this.loadLogs();
+        } catch (e) {
+          this.showToast('错误: ' + e.message);
+        } finally {
+          this.editStatusSaving = false;
+        }
+      },
+    };
+  }
+</script>
+{{end}}

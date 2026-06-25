@@ -1,0 +1,85 @@
+edition: 3.0.0
+name: f2v-promote-worker-create-order-prod
+access: default
+
+resources:
+  f2v-promote-worker-create-order-prod:
+    component: fc3
+    actions:
+      pre-deploy:
+        - run: go env -w GOPRIVATE=github.com/AiMarketool
+        - run: go mod tidy
+          path: ../
+        - run: mkdir -p target-worker/create-order && GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o target-worker/create-order/main ./cmd/worker/create-order/
+          path: ../
+    props:
+      region: cn-shanghai
+      handler: main
+      runtime: go1
+      role: "AliyunFcDefaultRole"
+      description: "F2V Promote MNS Consumer - 消费 MNS 执行微信加热计划 (Prod)"
+      timeout: 300
+      diskSize: 512
+      internetAccess: true
+      functionName: f2v-promote-worker-create-order-prod
+      cpu: 1
+      memorySize: 1024
+      code: ../target-worker/create-order
+      environmentVariables: ${json(file("../env/prod.json"))}
+      vpcConfig:
+        securityGroupId: sg-your-security-group-id
+        vpcId: "vpc-your-vpc-id"
+        vSwitchIds:
+          - vsw-your-vswitch-id
+      logConfig:
+        project: "your-log-project"
+        logstore: "function-log"
+        enableRequestMetrics: true
+        enableInstanceMetrics: true
+        logBeginRule: "DefaultRegex"
+      instanceLifecycleConfig:
+        preStop: 
+          handler: preStop 
+          timeout: 60
+        initializer:
+          handler: initialize
+          timeout: 60
+      asyncInvokeConfig:
+        asyncTask: true
+        maxAsyncEventAgeInSeconds: 660
+        destinationConfig:
+          onFailure:
+            destination: ""
+          onSuccess:
+            destination: ""
+      triggers:
+        - triggerConfig:
+            triggerEnable: true
+            asyncInvocationType: true
+            eventSourceConfig:
+              eventSourceType: MNS
+              eventSourceParameters:
+                sourceMNSParameters:
+                  RegionId: cn-shanghai
+                  QueueName: auto-promote-prod
+                  IsBase64Decode: false
+            eventRuleFilterPattern: "{}"
+            eventSinkConfig:
+              deliveryOption:
+                mode: event-streaming
+                eventSchema: RawData
+            runOptions:
+              batchWindow:
+                CountBasedWindow: 1
+                TimeBasedWindow: 0
+              retryStrategy:
+                PushRetryStrategy: BACKOFF_RETRY
+                MaximumEventAgeInSeconds: 0
+                MaximumRetryAttempts: 0
+              maximumTasks: 1
+              errorsTolerance: ALL
+              mode: event-streaming
+          triggerName: f2v-promote-worker-create-order-prod
+          description: "MNS trigger: consume promote messages, create weixin heating plans (Prod)"
+          qualifier: LATEST
+          triggerType: eventbridge

@@ -1,0 +1,410 @@
+{{template "base" .}} {{define "page_title"}}活动管理{{end}} {{define
+"topbar_actions"}}
+<a href="/create" class="btn btn-primary btn-sm">+ 新建活动</a>
+{{end}} {{define "content"}}
+<div x-data="campaignList()" x-init="init()">
+  <div class="filter-bar">
+    <div class="form-group filter-id">
+      <label>活动ID</label>
+      <input type="number" x-model.number="filterID" placeholder="精确搜索" />
+    </div>
+    <div class="form-group">
+      <label>状态</label>
+      <select x-model="filterStatus">
+        <option value="">全部状态</option>
+        <option value="init">初始化</option>
+        <option value="pending">待支付</option>
+        <option value="review">审核中</option>
+        <option value="active">加热中</option>
+        <option value="failed">失败</option>
+        <option value="closed">已关闭</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>开始日期</label>
+      <input type="date" x-model="startDate" />
+    </div>
+    <div class="form-group">
+      <label>结束日期</label>
+      <input type="date" x-model="endDate" />
+    </div>
+    <div class="filter-actions">
+      <button @click="onFilterChange()" class="btn btn-primary btn-sm">
+        筛选
+      </button>
+      <button @click="resetFilter()" class="btn-reset">重置</button>
+    </div>
+    <div class="filter-actions">
+      <a href="/campaigns/export" class="btn btn-secondary btn-sm">导出 CSV</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>文案摘要</th>
+            <th>标签组数</th>
+            <th>状态</th>
+            <th>错误信息</th>
+            <th>创建时间</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="c in filteredCampaigns" :key="c.id">
+            <tr>
+              <td class="text-muted text-sm" x-text="c.id"></td>
+              <td>
+                <div class="text-truncate col-truncate" x-text="c.script"></div>
+              </td>
+              <td x-text="c.tag_count || '-'"></td>
+              <td>
+                <span
+                  class="status-badge"
+                  :class="'status-' + c.status"
+                  x-text="statusText(c.status)"
+                ></span>
+              </td>
+              <td
+                class="text-muted text-sm col-truncate"
+                x-text="c.error_msg || '-'"
+                :title="c.error_msg"
+              ></td>
+              <td
+                class="text-muted text-sm"
+                x-text="fmtDate(c.created_at)"
+              ></td>
+              <td>
+                <button @click="openDrawer(c)" class="btn btn-outline btn-xs">
+                  详情
+                </button>
+              </td>
+            </tr>
+          </template>
+          <template x-if="filteredCampaigns.length === 0">
+            <tr>
+              <td colspan="7" class="empty-row">暂无活动数据</td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 分页器 -->
+    <div class="pagination" x-show="total > 0">
+      <div class="pagination-left">
+        <span x-text="`共 ${total} 条`"></span>
+        <select
+          class="page-size-select"
+          x-model.number="pageSize"
+          @change="page=1; loadCampaigns()"
+        >
+          <option value="20">20 条/页</option>
+          <option value="50">50 条/页</option>
+          <option value="100">100 条/页</option>
+        </select>
+      </div>
+      <div class="pagination-center">
+        <button class="page-btn" :disabled="page <= 1" @click="goPage(1)">
+          «
+        </button>
+        <button
+          class="page-btn"
+          :disabled="page <= 1"
+          @click="goPage(page - 1)"
+        >
+          ‹
+        </button>
+        <template x-for="p in pagesArray()" :key="p">
+          <button
+            class="page-btn"
+            :class="p === page ? 'page-btn-active' : (p === '...' ? 'page-btn-ellipsis' : '')"
+            :disabled="p === '...'"
+            @click="p !== '...' && goPage(p)"
+            x-text="p"
+          ></button>
+        </template>
+        <button
+          class="page-btn"
+          :disabled="page >= totalPages"
+          @click="goPage(page + 1)"
+        >
+          ›
+        </button>
+        <button
+          class="page-btn"
+          :disabled="page >= totalPages"
+          @click="goPage(totalPages)"
+        >
+          »
+        </button>
+      </div>
+      <div class="pagination-right">
+        <span>跳至</span>
+        <input
+          type="number"
+          class="page-jump-input"
+          min="1"
+          :max="totalPages"
+          @keyup.enter="jumpPage($event)"
+        />
+        <span>页</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 活动详情 Drawer -->
+  <div
+    class="drawer-overlay"
+    x-show="drawerOpen"
+    x-transition.opacity
+    @click="closeDrawer()"
+    x-cloak
+  ></div>
+  <div class="drawer" :class="drawerOpen ? 'drawer-open' : ''" x-cloak>
+    <div class="drawer-header">
+      <div class="drawer-title">活动详情</div>
+      <button class="drawer-close" @click="closeDrawer()">&times;</button>
+    </div>
+    <div class="drawer-body">
+      <!-- Loading -->
+      <div x-show="drawerLoading" class="drawer-loading">
+        <span class="spinner"></span> 加载中...
+      </div>
+      <!-- Content -->
+      <div x-show="!drawerLoading && drawerCampaign">
+        <!-- 活动信息 -->
+        <div class="detail-group">
+          <div class="detail-group-title">活动信息</div>
+          <div class="detail-row">
+            <span class="detail-label">活动 ID</span>
+            <span class="detail-value" x-text="drawerCampaign?.id"></span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">状态</span>
+            <span class="detail-value"
+              ><span
+                class="status-badge"
+                :class="'status-' + drawerCampaign?.status"
+                x-text="statusText(drawerCampaign?.status)"
+              ></span
+            ></span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">创建时间</span>
+            <span
+              class="detail-value"
+              x-text="fmtDate(drawerCampaign?.created_at)"
+            ></span>
+          </div>
+          <div class="detail-row" style="flex-direction: column; gap: 6px">
+            <span class="detail-label">文案</span>
+            <span
+              class="detail-value"
+              style="text-align: left; word-break: break-word"
+              x-text="drawerCampaign?.script"
+            ></span>
+          </div>
+        </div>
+        <!-- 订单列表 -->
+        <div class="detail-group">
+          <div class="detail-group-title">
+            订单列表 (<span x-text="drawerOrders.length"></span>)
+          </div>
+          <div
+            x-show="drawerOrders.length === 0"
+            style="color: #9ca3af; font-size: 14px; padding: 12px 0"
+          >
+            暂无订单
+          </div>
+          <template x-for="o in drawerOrders" :key="o.id">
+            <div
+              style="
+                border: 1px solid #e5e7eb;
+                border-radius: 8px;
+                padding: 12px;
+                margin-bottom: 8px;
+              "
+            >
+              <div class="detail-row">
+                <span class="detail-label">订单 ID</span>
+                <span class="detail-value" x-text="o.id"></span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">标签组</span>
+                <span class="detail-value" x-text="o.tag_name"></span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">平台订单号</span>
+                <span
+                  class="detail-value"
+                  x-text="o.platform_order_id || '-'"
+                ></span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">投放日志 ID</span>
+                <span
+                  class="detail-value"
+                  x-text="o.promote_log_id || '-'"
+                ></span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">状态</span>
+                <span class="detail-value"
+                  ><span
+                    class="status-badge"
+                    :class="'status-' + o.status"
+                    x-text="statusText(o.status)"
+                  ></span
+                ></span>
+              </div>
+              <div class="detail-row" x-show="o.close_reason">
+                <span class="detail-label">关闭原因</span>
+                <span
+                  class="detail-value"
+                  x-text="o.close_reason || '-'"
+                ></span>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{{end}} {{define "scripts"}}
+<script>
+  function campaignList() {
+    return {
+      campaigns: [],
+      filterStatus: '',
+      filterID: null,
+      startDate: '',
+      endDate: '',
+      page: 1,
+      pageSize: 20,
+      total: 0,
+      // Drawer state
+      drawerOpen: false,
+      drawerLoading: false,
+      drawerCampaign: null,
+      drawerOrders: [],
+
+      get filteredCampaigns() {
+        return this.campaigns;
+      },
+
+      get totalPages() {
+        return Math.max(1, Math.ceil(this.total / this.pageSize));
+      },
+
+      async init() {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('page'))
+          this.page = Math.max(1, parseInt(params.get('page')) || 1);
+        if (params.get('status')) this.filterStatus = params.get('status');
+        await this.loadCampaigns();
+      },
+
+      syncURL() {
+        const params = new URLSearchParams();
+        params.set('page', this.page);
+        params.set('page_size', this.pageSize);
+        if (this.filterStatus) params.set('status', this.filterStatus);
+        if (this.filterID) params.set('id', this.filterID);
+        if (this.startDate) params.set('start_date', this.startDate);
+        if (this.endDate) params.set('end_date', this.endDate);
+        history.replaceState(
+          null,
+          '',
+          window.location.pathname + '?' + params.toString(),
+        );
+      },
+
+      onFilterChange() {
+        this.page = 1;
+        this.loadCampaigns();
+      },
+      resetFilter() {
+        this.filterStatus = '';
+        this.filterID = null;
+        this.startDate = '';
+        this.endDate = '';
+        this.page = 1;
+        this.loadCampaigns();
+      },
+      goPage(p) {
+        if (p >= 1 && p <= this.totalPages) {
+          this.page = p;
+          this.loadCampaigns();
+        }
+      },
+      pagesArray() {
+        return pageList(this.page, this.totalPages);
+      },
+      jumpPage(e) {
+        const v = parseInt(e.target.value);
+        if (v >= 1 && v <= this.totalPages) {
+          this.page = v;
+          this.loadCampaigns();
+        }
+        e.target.value = '';
+      },
+
+      async loadCampaigns() {
+        try {
+          const params = new URLSearchParams({
+            page: this.page,
+            page_size: this.pageSize,
+          });
+          if (this.filterStatus) params.set('status', this.filterStatus);
+          if (this.filterID) params.set('id', this.filterID);
+          if (this.startDate) params.set('start_date', this.startDate);
+          if (this.endDate) params.set('end_date', this.endDate);
+          const res = await fetch(`/campaigns?${params}`);
+          const data = await res.json();
+          this.total = data.total || 0;
+          this.campaigns = (data.campaigns || []).map((c) => {
+            const tags =
+              typeof c.tag_groups === 'string'
+                ? JSON.parse(c.tag_groups)
+                : c.tag_groups;
+            return { ...c, tag_count: Array.isArray(tags) ? tags.length : 0 };
+          });
+          this.syncURL();
+        } catch (e) {}
+      },
+
+      async openDrawer(campaign) {
+        this.drawerCampaign = campaign;
+        this.drawerOrders = [];
+        this.drawerLoading = true;
+        this.drawerOpen = true;
+
+        try {
+          const res = await fetch(`/campaigns/${campaign.id}/orders`);
+          const data = await res.json();
+          this.drawerOrders = (data.orders || []).map((o) => {
+            const tg =
+              typeof o.tag_group === 'string'
+                ? JSON.parse(o.tag_group)
+                : o.tag_group;
+            return { ...o, tag_name: tg.name || '-' };
+          });
+        } catch (e) {
+          this.drawerOrders = [];
+        } finally {
+          this.drawerLoading = false;
+        }
+      },
+
+      closeDrawer() {
+        this.drawerOpen = false;
+      },
+    };
+  }
+</script>
+{{end}}

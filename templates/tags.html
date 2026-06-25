@@ -1,0 +1,200 @@
+{{template "base" .}}
+
+{{define "page_title"}}标签管理{{end}}
+
+{{define "content"}}
+<div x-data="tagsPage()" x-init="init()">
+  <div class="filter-bar">
+      <div class="form-group">
+        <label>关键词</label>
+        <input type="text" x-model="filters.keyword" @keyup.enter="page=1; load()" placeholder="搜索标签名">
+      </div>
+      <div class="form-group">
+        <label>层级</label>
+        <select x-model="filters.level" @change="page=1; load()">
+          <option value="">全部</option>
+          <option value="1">一级</option>
+          <option value="2">二级</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>父标签</label>
+        <select x-model="filters.parent_id" @change="page=1; load()">
+          <option value="">全部</option>
+          <template x-for="p in parentTags" :key="p.id">
+            <option :value="p.id" x-text="p.text"></option>
+          </template>
+        </select>
+      </div>
+      <div class="filter-actions">
+        <button @click="page=1; load()" class="btn btn-primary btn-sm">筛选</button>
+        <button @click="resetFilters()" class="btn-reset">重置</button>
+        <button @click="syncTags()" class="btn btn-secondary btn-sm" :disabled="syncing">
+          <span x-show="!syncing">同步标签</span>
+          <span x-show="syncing"><span class="spinner"></span> 同步中...</span>
+        </button>
+      </div>
+  </div>
+  <div class="card">
+    <!-- 表格 -->
+    <div class="table-container">
+      <div x-show="loading" class="table-loading-overlay"><span class="spinner"></span></div>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th class="col-id-lg">标签 ID</th>
+              <th>标签名</th>
+              <th>层级</th>
+              <th class="col-id-lg">父标签 ID</th>
+              <th>父标签名</th>
+              <th>更新时间</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="t in list" :key="t.id">
+              <tr>
+                <td class="id-col" x-text="t.id"></td>
+                <td>
+                  <span x-text="t.text"></span>
+                </td>
+                <td>
+                  <span class="status-tag" :class="t.level === 1 ? 'status-active' : 'status-pending'" x-text="t.level === 1 ? '一级' : '二级'"></span>
+                </td>
+                <td class="id-col" x-text="t.parent_id || '-'"></td>
+                <td x-text="t.parent_text || '-'"></td>
+                <td x-text="fmtDate(t.updated_at)"></td>
+              </tr>
+            </template>
+            <template x-if="list.length === 0 && !loading">
+              <tr>
+                <td colspan="6">
+                  <div class="empty-state">
+                    <div class="empty-state-icon">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+                    </div>
+                    <div class="empty-state-title">暂无标签数据</div>
+                    <div class="empty-state-desc">点击「同步标签」从诸葛平台拉取最新标签</div>
+                  </div>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <!-- 分页器 -->
+    <div class="pagination" x-show="total > 0">
+      <div class="pagination-left">
+        <span x-text="`共 ${fmtNum(total)} 条`"></span>
+        <select class="page-size-select" x-model.number="pageSize" @change="page=1; load()">
+          <option value="20">20 条/页</option>
+          <option value="50">50 条/页</option>
+          <option value="100">100 条/页</option>
+        </select>
+      </div>
+      <div class="pagination-center">
+        <button class="page-btn" :disabled="page <= 1" @click="goPage(1)">«</button>
+        <button class="page-btn" :disabled="page <= 1" @click="goPage(page - 1)">‹</button>
+        <template x-for="p in pagesArray()" :key="p">
+          <button class="page-btn" :class="p === page ? 'page-btn-active' : (p === '...' ? 'page-btn-ellipsis' : '')" :disabled="p === '...'" @click="p !== '...' && goPage(p)" x-text="p"></button>
+        </template>
+        <button class="page-btn" :disabled="page >= totalPages" @click="goPage(page + 1)">›</button>
+        <button class="page-btn" :disabled="page >= totalPages" @click="goPage(totalPages)">»</button>
+      </div>
+      <div class="pagination-right">
+        <span>跳至</span>
+        <input type="number" class="page-jump-input" min="1" :max="totalPages" @keyup.enter="jumpPage($event)">
+        <span>页</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" x-data x-show="$store.toast.msg" x-text="$store.toast.msg" x-transition x-cloak></div>
+</div>
+{{end}}
+
+{{define "scripts"}}
+<script>
+function tagsPage() {
+  return {
+    list: [], total: 0, page: 1, pageSize: 50, loading: false,
+    filters: { keyword: '', level: '', parent_id: '' },
+    parentTags: [],
+    syncing: false,
+
+    get totalPages() { return Math.max(1, Math.ceil(this.total / this.pageSize)); },
+
+    async init() {
+      this.initFromURL();
+      await Promise.all([this.load(), this.loadParents()]);
+    },
+
+    initFromURL() {
+      const p = new URLSearchParams(window.location.search);
+      this.page = Math.max(1, parseInt(p.get('page')) || 1);
+      if (p.get('page_size')) this.pageSize = parseInt(p.get('page_size')) || 50;
+      if (p.get('keyword')) this.filters.keyword = p.get('keyword');
+      if (p.get('level')) this.filters.level = p.get('level');
+      if (p.get('parent_id')) this.filters.parent_id = p.get('parent_id');
+    },
+
+    syncURL() {
+      const p = new URLSearchParams();
+      p.set('page', this.page);
+      p.set('page_size', this.pageSize);
+      Object.entries(this.filters).forEach(([k, v]) => { if (v) p.set(k, v); });
+      history.replaceState(null, '', window.location.pathname + '?' + p.toString());
+    },
+
+    async load() {
+      this.loading = true;
+      try {
+        const params = new URLSearchParams({ page: this.page, page_size: this.pageSize });
+        if (this.filters.keyword) params.set('keyword', this.filters.keyword);
+        if (this.filters.level) params.set('level', this.filters.level);
+        if (this.filters.parent_id) params.set('parent_id', this.filters.parent_id);
+        const res = await fetch('/tags?' + params);
+        const data = await res.json();
+        this.list = data.list || [];
+        this.total = data.total || 0;
+        this.syncURL();
+      } catch (e) { this.showToast('加载失败'); }
+      finally { this.loading = false; }
+    },
+
+    async loadParents() {
+      try {
+        const res = await fetch('/tags?level=1&page_size=200');
+        const data = await res.json();
+        this.parentTags = data.list || [];
+      } catch (e) {}
+    },
+
+    async syncTags() {
+      this.syncing = true;
+      try {
+        const res = await fetch('/tags/sync', { method: 'POST' });
+        const data = await res.json();
+        this.showToast(data.message || '同步完成');
+        await this.load();
+      } catch (e) { this.showToast('同步失败'); }
+      finally { this.syncing = false; }
+    },
+
+    resetFilters() {
+      this.filters = { keyword: '', level: '', parent_id: '' };
+      this.page = 1;
+      this.load();
+    },
+
+    goPage(p) { if (p >= 1 && p <= this.totalPages) { this.page = p; this.load(); } },
+    jumpPage(e) { const v = parseInt(e.target.value); if (v >= 1 && v <= this.totalPages) { this.page = v; this.load(); } e.target.value = ''; },
+
+    pagesArray() { return pageList(this.page, this.totalPages); },
+
+    showToast(msg) { Alpine.store('toast').show(msg); },
+  };
+}
+</script>
+{{end}}

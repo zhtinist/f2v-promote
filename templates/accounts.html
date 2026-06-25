@@ -1,0 +1,369 @@
+{{template "base" .}} {{define "page_title"}}账号管理{{end}} {{define
+"content"}}
+<div x-data="accountsPage()" x-init="init()">
+  <div class="filter-bar" style="justify-content: flex-end">
+      <button @click="openNew()" class="btn btn-primary btn-sm">
+        + 添加账号
+      </button>
+  </div>
+  <div class="card">
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>名称</th>
+            <th>平台</th>
+            <th>状态</th>
+            <th>创建时间</th>
+            <th>更新时间</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="a in accounts" :key="a.id">
+            <tr>
+              <td x-text="a.id"></td>
+              <td x-text="a.name"></td>
+              <td>
+                <span
+                  class="status-tag"
+                  :class="a.platform === 'douyin' ? 'status-pending' : 'status-active'"
+                  x-text="platformName(a.platform)"
+                ></span>
+              </td>
+              <td>
+                <span
+                  class="status-tag"
+                  :class="a.status === 'active' ? 'status-active' : 'status-closed'"
+                  x-text="a.status === 'active' ? '活跃' : '停用'"
+                ></span>
+              </td>
+              <td
+                class="text-muted text-sm"
+                x-text="fmtDate(a.created_at)"
+              ></td>
+              <td
+                class="text-muted text-sm"
+                x-text="fmtDate(a.updated_at)"
+              ></td>
+              <td class="col-nowrap">
+                <button @click="openDetail(a)" class="btn btn-outline btn-xs">
+                  详情
+                </button>
+                <button @click="openEdit(a)" class="btn btn-outline btn-xs">
+                  编辑
+                </button>
+                <button
+                  @click="remove(a)"
+                  class="btn btn-outline btn-xs text-danger"
+                >
+                  删除
+                </button>
+              </td>
+            </tr>
+          </template>
+          <tr x-show="accounts.length === 0">
+            <td colspan="7" class="empty-row">暂无账号，点击右上角添加</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="pagination" x-show="total > 0">
+      <div class="pagination-left">
+        <span x-text="`共 ${total} 条`"></span>
+        <select class="page-size-select" x-model.number="pageSize" @change="page=1; load()">
+          <option value="20">20 条/页</option>
+          <option value="50">50 条/页</option>
+          <option value="100">100 条/页</option>
+        </select>
+      </div>
+      <div class="pagination-center">
+        <button class="page-btn" :disabled="page <= 1" @click="goPage(1)">«</button>
+        <button class="page-btn" :disabled="page <= 1" @click="goPage(page - 1)">‹</button>
+        <template x-for="p in pagesArray()" :key="p">
+          <button class="page-btn" :class="p === page ? 'page-btn-active' : (p === '...' ? 'page-btn-ellipsis' : '')" :disabled="p === '...'" @click="p !== '...' && goPage(p)" x-text="p"></button>
+        </template>
+        <button class="page-btn" :disabled="page >= totalPages" @click="goPage(page + 1)">›</button>
+        <button class="page-btn" :disabled="page >= totalPages" @click="goPage(totalPages)">»</button>
+      </div>
+      <div class="pagination-right">
+        <span>跳至</span>
+        <input type="number" class="page-jump-input" min="1" :max="totalPages" @keyup.enter="jumpPage($event)">
+        <span>页</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 详情抽屉 -->
+  <div
+    class="drawer-overlay"
+    x-show="detailOpen"
+    x-transition.opacity
+    @click="detailOpen = false"
+    x-cloak
+  ></div>
+  <div class="drawer" :class="detailOpen ? 'drawer-open' : ''" x-cloak>
+    <div class="drawer-header">
+      <div class="drawer-title">账号详情</div>
+      <button class="drawer-close" @click="detailOpen = false">&times;</button>
+    </div>
+    <div class="drawer-body" x-show="detailAccount">
+      <!-- 属性网格 -->
+      <div class="info-grid" style="padding:16px; background:var(--bg-thead); border-radius:8px; margin-bottom:20px;">
+        <div class="info-item">
+          <span class="info-label">ID</span>
+          <span class="info-value" x-text="detailAccount?.id"></span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">名称</span>
+          <span class="info-value" x-text="detailAccount?.name"></span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">平台</span>
+          <span class="info-value" x-text="platformName(detailAccount?.platform)"></span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">创建时间</span>
+          <span class="info-value" x-text="fmtDate(detailAccount?.created_at)"></span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">更新时间</span>
+          <span class="info-value" x-text="fmtDate(detailAccount?.updated_at)"></span>
+        </div>
+      </div>
+
+      <!-- 平台配置 JSON -->
+      <div>
+        <div class="section-title">平台配置</div>
+        <pre
+          class="code-block"
+          x-text="JSON.stringify(detailAccount?.account_config || {}, null, 2)"
+        ></pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- 创建/编辑抽屉 -->
+  <div
+    class="drawer-overlay"
+    x-show="drawerOpen"
+    x-transition.opacity
+    @click="drawerOpen = false"
+    x-cloak
+  ></div>
+  <div class="drawer" :class="drawerOpen ? 'drawer-open' : ''" x-cloak>
+    <div class="drawer-header">
+      <div class="drawer-title" x-text="isNew ? '添加账号' : '编辑账号'"></div>
+      <button class="drawer-close" @click="drawerOpen = false">&times;</button>
+    </div>
+    <div class="drawer-body">
+      <form @submit.prevent="save()">
+        <div class="form-group">
+          <label>名称</label>
+          <input
+            type="text"
+            x-model="form.name"
+            placeholder="账号名称"
+            required
+          />
+        </div>
+        <div class="form-group">
+          <label>平台</label>
+          <select x-model="form.platform" :disabled="!isNew">
+            <option value="weixin">微信</option>
+            <option value="douyin">抖音</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>平台配置 <span class="text-muted text-sm">(JSON)</span></label>
+          <textarea
+            x-model="form.account_config_str"
+            rows="10"
+            required
+            class="mono"
+            placeholder='{"account":"","password":"","ts_user_id":"","group_id":""}'
+          ></textarea>
+          <div
+            x-show="jsonError"
+            class="text-sm"
+            class="text-sm text-danger"
+            x-text="jsonError"
+          ></div>
+        </div>
+        <div class="btn-group-lg">
+          <button type="submit" class="btn btn-primary" :disabled="saving">
+            <span x-show="!saving">保存</span>
+            <span x-show="saving">提交中...</span>
+          </button>
+          <button
+            type="button"
+            @click="drawerOpen = false"
+            class="btn btn-secondary"
+          >
+            取消
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+
+</div>
+{{end}} {{define "scripts"}}
+<script>
+  function accountsPage() {
+    return {
+      accounts: [],
+      total: 0,
+      page: 1,
+      pageSize: 20,
+      drawerOpen: false,
+      detailOpen: false,
+      detailAccount: null,
+      isNew: true,
+      saving: false,
+      editId: null,
+      form: { name: '', platform: 'weixin', account_config_str: '' },
+      jsonError: '',
+
+      get totalPages() { return Math.max(1, Math.ceil(this.total / this.pageSize)); },
+
+      async init() {
+        this.initFromURL();
+        await this.load();
+      },
+
+      initFromURL() {
+        const p = new URLSearchParams(window.location.search);
+        this.page = Math.max(1, parseInt(p.get('page')) || 1);
+        if (p.get('page_size')) this.pageSize = parseInt(p.get('page_size')) || 20;
+      },
+
+      syncURL() {
+        const p = new URLSearchParams();
+        p.set('page', this.page);
+        p.set('page_size', this.pageSize);
+        history.replaceState(null, '', window.location.pathname + '?' + p.toString());
+      },
+
+      async load() {
+        try {
+          const params = new URLSearchParams({ page: this.page, page_size: this.pageSize });
+          const res = await fetch('/zhuge/accounts?' + params);
+          const data = await res.json();
+          this.accounts = data.list || [];
+          this.total = data.total || 0;
+          this.syncURL();
+        } catch (e) {}
+      },
+
+      goPage(p) { if (p >= 1 && p <= this.totalPages) { this.page = p; this.load(); } },
+      jumpPage(e) { const v = parseInt(e.target.value); if (v >= 1 && v <= this.totalPages) { this.page = v; this.load(); } e.target.value = ''; },
+
+      openDetail(a) {
+        this.detailAccount = a;
+        this.detailOpen = true;
+      },
+
+      openNew() {
+        this.isNew = true;
+        this.editId = null;
+        this.jsonError = '';
+        const tpl = { account: '', password: '', ts_user_id: '', group_id: '' };
+        this.form = {
+          name: '',
+          platform: 'weixin',
+          account_config_str: JSON.stringify(tpl, null, 2),
+        };
+        this.drawerOpen = true;
+      },
+
+      openEdit(a) {
+        this.isNew = false;
+        this.editId = a.id;
+        this.jsonError = '';
+        this.form = {
+          name: a.name,
+          platform: a.platform || 'weixin',
+          account_config_str: JSON.stringify(a.account_config || {}, null, 2),
+        };
+        this.drawerOpen = true;
+      },
+
+      parseConfig() {
+        try {
+          const obj = JSON.parse(this.form.account_config_str);
+          this.jsonError = '';
+          return obj;
+        } catch (e) {
+          this.jsonError = 'JSON 格式错误: ' + e.message;
+          return null;
+        }
+      },
+
+      async save() {
+        const config = this.parseConfig();
+        if (!config) return;
+
+        this.saving = true;
+        try {
+          const body = {
+            name: this.form.name,
+            platform: this.form.platform,
+            account_config: config,
+          };
+          const url = this.isNew
+            ? '/zhuge/accounts'
+            : `/zhuge/accounts/${this.editId}`;
+          const method = this.isNew ? 'POST' : 'PUT';
+          const res = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          if (!res.ok) {
+            const e = await res.json();
+            throw new Error(e.error || '操作失败');
+          }
+          this.showToast(this.isNew ? '账号添加成功' : '账号更新成功');
+          this.drawerOpen = false;
+          await this.load();
+        } catch (e) {
+          this.showToast('错误: ' + e.message);
+        } finally {
+          this.saving = false;
+        }
+      },
+
+      async remove(a) {
+        if (!confirm(`确定删除账号 "${a.name}"？`)) return;
+        try {
+          const res = await fetch(`/zhuge/accounts/${a.id}`, {
+            method: 'DELETE',
+          });
+          if (!res.ok) throw new Error('删除失败');
+          this.showToast('已删除');
+          await this.load();
+        } catch (e) {
+          this.showToast('错误: ' + e.message);
+        }
+      },
+
+      pagesArray() {
+        return pageList(this.page, this.totalPages);
+      },
+
+      jumpPage(e) {
+        const v = parseInt(e.target.value);
+        if (v >= 1 && v <= this.totalPages) this.page = v;
+        e.target.value = '';
+      },
+
+      showToast(msg) {
+        Alpine.store('toast').show(msg);
+      },
+    };
+  }
+</script>
+{{end}}

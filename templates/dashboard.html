@@ -1,0 +1,213 @@
+{{template "base" .}}
+
+{{define "page_title"}}统计面板{{end}}
+
+{{define "content"}}
+<div x-data="dashboard()" x-init="init()">
+  <!-- 订单维度统计 -->
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-icon purple">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      </div>
+      <div>
+        <div class="stat-value" x-text="stats.campaigns">-</div>
+        <div class="stat-label">活动总数</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon blue">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      </div>
+      <div>
+        <div class="stat-value" x-text="stats.active">-</div>
+        <div class="stat-label">投放中</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon orange">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      </div>
+      <div>
+        <div class="stat-value" x-text="stats.pending">-</div>
+        <div class="stat-label">待支付</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon green">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="8.5" cy="7" r="4"/><polyline points="17 11 19 13 23 9"/></svg>
+      </div>
+      <div>
+        <div class="stat-value" x-text="stats.review">-</div>
+        <div class="stat-label">审核中</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon red">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+      </div>
+      <div>
+        <div class="stat-value" x-text="stats.failed">-</div>
+        <div class="stat-label">失败</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon gold">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+      </div>
+      <div>
+        <div class="stat-value" x-text="stats.total_cost">-</div>
+        <div class="stat-label">总消耗</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 新增维度统计 -->
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-icon purple">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+      </div>
+      <div>
+        <div class="stat-value" x-text="overview.author_count">-</div>
+        <div class="stat-label">作者总数</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon blue">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+      </div>
+      <div>
+        <div class="stat-value" x-text="overview.video_count">-</div>
+        <div class="stat-label">视频总数</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon green">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.21 15.89A10 10 0 118 2.83"/><path d="M22 12A10 10 0 0012 2v10z"/></svg>
+      </div>
+      <div>
+        <div class="stat-value" x-text="overview.today_stats_count">-</div>
+        <div class="stat-label">今日采集</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon orange">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      </div>
+      <div>
+        <div class="stat-value" x-text="overview.enabled_strategies">-</div>
+        <div class="stat-label">策略启用中</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon blue">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+      </div>
+      <div>
+        <div class="stat-value" x-text="overview.today_promotes">-</div>
+        <div class="stat-label">今日自动投放</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon red">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      </div>
+      <div>
+        <div class="stat-value" x-text="overview.pending_promotes">-</div>
+        <div class="stat-label">待审核投放</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 最新订单 -->
+  <div class="card">
+    <div class="card-header"><div class="card-title">最新 50 个订单</div></div>
+    <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th>标签组</th>
+          <th>状态</th>
+          <th>消耗</th>
+          <th>ROI</th>
+          <th>观看</th>
+          <th>关注</th>
+          <th>创建时间</th>
+        </tr>
+      </thead>
+      <tbody>
+        <template x-for="o in orders" :key="o.id">
+          <tr>
+            <td x-text="o.tag_name || '-'"></td>
+            <td><span class="status-tag" :class="'status-'+o.status" x-text="statusText(o.status)"></span></td>
+            <td x-text="o.cost || '-'"></td>
+            <td x-text="o.roi || '-'"></td>
+            <td x-text="o.view_num ?? '-'"></td>
+            <td x-text="o.focus_num ?? '-'"></td>
+            <td x-text="fmtDate(o.created_at)"></td>
+          </tr>
+        </template>
+        <tr x-show="orders.length === 0">
+          <td colspan="7" class="empty-row">暂无订单</td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+</div>
+{{end}}
+
+{{define "scripts"}}
+<script>
+function dashboard() {
+  return {
+    stats: { campaigns: 0, active: 0, pending: 0, review: 0, failed: 0, total_cost: '0.00' },
+    overview: { author_count: 0, video_count: 0, today_stats_count: 0, enabled_strategies: 0, today_promotes: 0, pending_promotes: 0 },
+    orders: [],
+    _timer: null,
+
+    async init() {
+      await Promise.all([this.loadOverview(), this.loadOrders()]);
+      this._timer = setInterval(() => {
+        this.loadOverview();
+        this.loadOrders();
+      }, 30000);
+    },
+
+    async loadOverview() {
+      try {
+        const res = await fetch('/api/dashboard/overview');
+        const data = await res.json();
+        // 订单维度
+        const o = data.orders || {};
+        this.stats.campaigns = o.campaigns || 0;
+        this.stats.active = o.active || 0;
+        this.stats.pending = o.pending || 0;
+        this.stats.review = o.review || 0;
+        this.stats.failed = o.failed || 0;
+        this.stats.total_cost = o.total_cost != null ? Number(o.total_cost).toFixed(2) : '0.00';
+        // 新增维度
+        this.overview.author_count = data.author_count || 0;
+        this.overview.video_count = data.video_count || 0;
+        this.overview.today_stats_count = data.today_stats_count || 0;
+        this.overview.enabled_strategies = data.enabled_strategies || 0;
+        this.overview.today_promotes = data.today_promotes || 0;
+        this.overview.pending_promotes = data.pending_promotes || 0;
+      } catch (e) {}
+    },
+
+    async loadOrders() {
+      try {
+        const res = await fetch('/api/dashboard/recent-orders?limit=50');
+        const data = await res.json();
+        this.orders = data.orders || [];
+      } catch (e) {}
+    },
+
+    showToast(msg) { Alpine.store('toast').show(msg); }
+  };
+}
+</script>
+{{end}}

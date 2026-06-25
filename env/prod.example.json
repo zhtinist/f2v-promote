@@ -1,0 +1,51 @@
+{
+  "APP_PORT": ":9000",
+  "APP_NAME": "f2v-promote",
+  "DEBUG": "false",
+
+  "MYSQL_HOST": "127.0.0.1",
+  "MYSQL_PORT": "3306",
+  "MYSQL_USER": "f2v_promote",
+  "MYSQL_PASSWORD": "your-mysql-password",
+  "MYSQL_DATABASE": "f2v_promote",
+
+  "SESSION_SECRET": "your-session-secret",
+  "ADMIN_TOKEN": "your-admin-token",
+
+  "OPENAI_API_KEY": "sk-your-openai-key",
+  "OPENAI_MODEL": "gpt-4o",
+  "OPENAI_BASE_URL": "",
+
+  "ZHUGE_API_BASE": "https://zhuge-login.example.com",
+  "ZHUGE_LOGIN_URL": "https://zhuge-api.example.com",
+  "ZHUGE_WEI_DOU": "500",
+  "ZHUGE_PLAN_INTERVAL": "10",
+  "ZHUGE_MAX_PLANS_PER_5MIN": "5",
+
+  "OSS_ACCESS_KEY_ID": "",
+  "OSS_ACCESS_KEY_SECRET": "",
+  "OSS_ENDPOINT": "",
+  "OSS_BUCKET": "",
+  "OSS_DOMAIN": "",
+
+  "LOG_LEVEL": "INFO",
+
+  "BASIC_AUTH_USER": "admin",
+  "BASIC_AUTH_PASS": "your-basic-auth-password",
+
+  "FEISHU_APP_ID": "",
+  "FEISHU_APP_SECRET": "",
+  "FEISHU_VERIFICATION_TOKEN": "",
+  "FEISHU_CHAT_ID": "",
+  "WEBHOOK_URL": "",
+
+  "MNS_ENDPOINT": "",
+  "MNS_ACCESS_KEY_ID": "",
+  "MNS_ACCESS_KEY_SECRET": "",
+  "MNS_QUEUE_NAME": "auto-promote-prod",
+
+  "ZHUGE_ACCOUNT": "",
+  "ZHUGE_PASSWORD": "",
+  "ZHUGE_TS_USER_ID": "",
+  "ZHUGE_GROUP_ID": ""
+}

@@ -1,0 +1,52 @@
+{{template "base" .}}
+
+{{define "content_noauth"}}
+<div class="auth-container" x-data="{ showRegister: false }">
+  <div class="auth-logo"></div>
+  <p class="auth-subtitle">自动投放系统</p>
+
+  {{if .Error}}
+  <div class="alert alert-error">{{.Error}}</div>
+  {{end}}
+
+  <!-- 登录表单 -->
+  <div x-show="!showRegister">
+    <form method="post" action="/login" class="auth-form">
+      <div class="form-group">
+        <label for="login-username">用户名</label>
+        <input type="text" id="login-username" name="username" required autofocus placeholder="请输入用户名">
+      </div>
+      <div class="form-group">
+        <label for="login-password">密码</label>
+        <input type="password" id="login-password" name="password" required placeholder="请输入密码">
+      </div>
+      <button type="submit" class="btn btn-primary btn-block btn-lg">登录</button>
+    </form>
+    <p class="auth-switch">
+      没有账号？<a href="#" @click.prevent="showRegister = true">注册</a>
+    </p>
+  </div>
+
+  <!-- 注册表单 -->
+  <div x-show="showRegister" x-cloak>
+    <form method="post" action="/register" class="auth-form">
+      <div class="form-group">
+        <label for="reg-username">用户名</label>
+        <input type="text" id="reg-username" name="username" required placeholder="请输入用户名">
+      </div>
+      <div class="form-group">
+        <label for="reg-password">密码</label>
+        <input type="password" id="reg-password" name="password" required minlength="6" placeholder="至少6位">
+      </div>
+      <div class="form-group">
+        <label for="reg-token">注册令牌</label>
+        <input type="text" id="reg-token" name="admin_token" required placeholder="请向管理员索取">
+      </div>
+      <button type="submit" class="btn btn-primary btn-block btn-lg">注册</button>
+    </form>
+    <p class="auth-switch">
+      已有账号？<a href="#" @click.prevent="showRegister = false">登录</a>
+    </p>
+  </div>
+</div>
+{{end}}
